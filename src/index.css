@@ -2054,18 +2054,69 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Footer */
 .app-footer {
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 1.5rem 0;
+  padding: 2rem 1rem;
   text-align: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   margin-top: auto;
 }
 
-.app-footer p {
-  color: rgba(255, 255, 255, 0.6);
-  margin: 0;
-  font-size: 0.9rem;
+.footer-content {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.footer-content p {
+  margin: 0 0 1rem 0;
+  opacity: 0.8;
+}
+
+.footer-links {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.footer-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+}
+
+.footer-link:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.footer-link svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .footer-links {
+    gap: 1rem;
+  }
+  
+  .footer-link {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .footer-link svg {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 /* Responsive Design */
@@ -2762,5 +2813,157 @@ h1, h2, h3, h4, h5, h6 {
   
   .step-number {
     align-self: center;
+  }
+}
+
+/* Disclaimer Popup Styles */
+.disclaimer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+}
+
+.disclaimer-modal {
+  background: white;
+  border-radius: 12px;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border: 3px solid #ef4444;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+
+.disclaimer-header {
+  padding: 1.5rem;
+  border-bottom: 2px solid #ef4444;
+  text-align: center;
+  background: #fef2f2;
+}
+
+.disclaimer-header .warning-icon {
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.disclaimer-header h2 {
+  color: #dc2626;
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.disclaimer-content {
+  padding: 1.5rem;
+  color: #1f2937;
+}
+
+.security-alert {
+  background: #fef2f2;
+  border: 2px solid #fecaca;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.alert-icon {
+  font-size: 1.25rem;
+  color: #dc2626;
+}
+
+.security-section, .liability-section {
+  margin-bottom: 1.5rem;
+}
+
+.security-section h3, .liability-section h3 {
+  color: #dc2626;
+  margin-bottom: 0.75rem;
+  font-size: 1.1rem;
+}
+
+.security-section ul, .liability-section ul {
+  margin: 0.5rem 0;
+  padding-left: 1rem;
+}
+
+.security-section li, .liability-section li {
+  margin-bottom: 0.5rem;
+  color: #374151;
+}
+
+.liability-emphasis {
+  background: #fef2f2;
+  padding: 1rem;
+  border-left: 4px solid #ef4444;
+  margin-top: 1rem;
+  color: #7f1d1d;
+}
+
+.warning-notice {
+  background: #fffbeb;
+  border: 2px solid #fbbf24;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  color: #92400e;
+  font-weight: 500;
+}
+
+.disclaimer-actions {
+  padding: 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.btn-decline {
+  background: #6b7280;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-decline:hover {
+  background: #4b5563;
+}
+
+.btn-accept {
+  background: #059669;
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.btn-accept:hover {
+  background: #047857;
+}
+
+@media (max-width: 768px) {
+  .disclaimer-modal {
+    margin: 1rem;
+    max-width: none;
+  }
+  
+  .disclaimer-actions {
+    flex-direction: column;
   }
 }

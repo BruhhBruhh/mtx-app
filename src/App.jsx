@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
+import DisclaimerPopup from './components/DisclaimerPopup';
+import { useDisclaimer } from './hooks/useDisclaimer';
+
+// Add error boundary for window.ethereum
+const checkMetaMaskAvailability = () => {
+  if (typeof window !== 'undefined' && window.ethereum) {
+    return true;
+  }
+  return false;
+};
 
 const App = () => {
   // App state
@@ -12,10 +22,11 @@ const App = () => {
   });
   const [gasUpdateTime, setGasUpdateTime] = useState(null);
   const ALCHEMY_KEYS = {
-  ethereum: import.meta.env.VITE_ALCHEMY_ETHEREUM_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL",    // Replace with your Ethereum API key
-  optimism: import.meta.env.VITE_ALCHEMY_OPTIMISM_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL",    // Replace with your Optimism API key  
-  base: import.meta.env.VITE_ALCHEMY_BASE_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL"             // Replace with your Base API key
-};
+    ethereum: import.meta.env.VITE_ALCHEMY_ETHEREUM_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL",    // Replace with your Ethereum API key
+    optimism: import.meta.env.VITE_ALCHEMY_OPTIMISM_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL",    // Replace with your Optimism API key  
+    base: import.meta.env.VITE_ALCHEMY_BASE_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL"             // Replace with your Base API key
+  };
+  const [isMetaMaskAvailable, setIsMetaMaskAvailable] = useState(false);
 
   // Wallet state
   const [wallet, setWallet] = useState(null);
@@ -37,6 +48,9 @@ const App = () => {
   const [connectedAddress, setConnectedAddress] = useState(null);
   const [networkInfo, setNetworkInfo] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
+
+  // Disclaimer state
+  const { showDisclaimer, hasAccepted, acceptTerms } = useDisclaimer(); 
 
   // Minting state
   const [isMinting, setIsMinting] = useState(false);
@@ -136,6 +150,7 @@ const App = () => {
   useEffect(() => {
     checkExistingConnection();
     setupEventListeners();
+    setIsMetaMaskAvailable(checkMetaMaskAvailability());
   }, []);
 
   // Gas price updates - ADD THIS
@@ -152,21 +167,22 @@ const App = () => {
     const savedKey = sessionStorage.getItem('mintxen_wallet_key');
     const isVerified = localStorage.getItem('mintxen_wallet_verified');
 
-    if (savedAddress && savedKey && isVerified) {
-      try {
-        const restoredWallet = new ethers.Wallet(savedKey);
-        setWallet({
-          address: restoredWallet.address,
-          privateKey: restoredWallet.privateKey,
-          mnemonic: null
-        });
-        setWalletStep('complete');
-        setActiveTab('rainbow');
-      } catch (err) {
-        console.error('Failed to restore wallet:', err);
-        clearStoredWallet();
-      }
-    }
+if (savedAddress && savedKey && isVerified) {
+  try {
+    const restoredWallet = new ethers.Wallet(savedKey);
+    setWallet({
+      address: restoredWallet.address,
+      privateKey: restoredWallet.privateKey,
+      mnemonic: null
+    });
+    setWalletStep('complete');
+    // Don't auto-switch to rainbow tab - let user start from hero
+    // setActiveTab('rainbow');
+  } catch (err) {
+    console.error('Failed to restore wallet:', err);
+    clearStoredWallet();
+  }
+}
 
     // Check for existing MetaMask connection
     if (window.ethereum) {
@@ -183,7 +199,7 @@ const App = () => {
 
   // Setup MetaMask event listeners
   const setupEventListeners = () => {
-    if (window.ethereum) {
+    if (isMetaMaskAvailable && window.ethereum) {
       window.ethereum.on('accountsChanged', handleAccountsChanged);
       window.ethereum.on('chainChanged', handleChainChanged);
       window.ethereum.on('disconnect', handleDisconnect);
@@ -215,8 +231,8 @@ const App = () => {
     setError('');
 
     try {
-      if (!window.ethereum) {
-        throw new Error('MetaMask is not installed. Please install MetaMask.');
+      if (!isMetaMaskAvailable) {
+        throw new Error('MetaMask is not installed. The app will work without it for automated minting.');
       }
 
       let accounts;
@@ -277,116 +293,116 @@ const App = () => {
   };
 
   // Gas price fetching functions 
- const fetchOptimismGas = async () => {
-  try {
-    const response = await fetch(`https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_KEYS.optimism}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_gasPrice',
-        params: [],
-        id: 1
-      })
-    });
-    
-    const data = await response.json();
-    if (data.result) {
-      const gasPriceWei = parseInt(data.result, 16);
-      const gasPriceGwei = gasPriceWei / 1e9;
-      
-      return {
-        fast: (gasPriceGwei * 1.15).toFixed(4),
-        standard: gasPriceGwei.toFixed(4),
-        safe: (gasPriceGwei * 0.85).toFixed(4),
-        loading: false
-      };
+  const fetchOptimismGas = async () => {
+    try {
+      const response = await fetch(`https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_KEYS.optimism}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_gasPrice',
+          params: [],
+          id: 1
+        })
+      });
+
+      const data = await response.json();
+      if (data.result) {
+        const gasPriceWei = parseInt(data.result, 16);
+        const gasPriceGwei = gasPriceWei / 1e9;
+
+        return {
+          fast: (gasPriceGwei * 1.15).toFixed(4),
+          standard: gasPriceGwei.toFixed(4),
+          safe: (gasPriceGwei * 0.85).toFixed(4),
+          loading: false
+        };
+      }
+    } catch (error) {
+      console.error('Alchemy Optimism gas fetch failed:', error);
     }
-  } catch (error) {
-    console.error('Alchemy Optimism gas fetch failed:', error);
-  }
-  
-  return {
-    fast: '0.001',
-    standard: '0.001',
-    safe: '0.001',
-    loading: false
+
+    return {
+      fast: '0.001',
+      standard: '0.001',
+      safe: '0.001',
+      loading: false
+    };
   };
-};
 
   const fetchBaseGas = async () => {
-  try {
-    const response = await fetch(`https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEYS.base}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_gasPrice',
-        params: [],
-        id: 1
-      })
-    });
-    
-    const data = await response.json();
-    if (data.result) {
-      const gasPriceWei = parseInt(data.result, 16);
-      const gasPriceGwei = gasPriceWei / 1e9;
-      
-      return {
-        fast: (gasPriceGwei * 1.2).toFixed(4),
-        standard: gasPriceGwei.toFixed(4),
-        safe: (gasPriceGwei * 0.8).toFixed(4),
-        loading: false
-      };
+    try {
+      const response = await fetch(`https://base-mainnet.g.alchemy.com/v2/${ALCHEMY_KEYS.base}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_gasPrice',
+          params: [],
+          id: 1
+        })
+      });
+
+      const data = await response.json();
+      if (data.result) {
+        const gasPriceWei = parseInt(data.result, 16);
+        const gasPriceGwei = gasPriceWei / 1e9;
+
+        return {
+          fast: (gasPriceGwei * 1.2).toFixed(4),
+          standard: gasPriceGwei.toFixed(4),
+          safe: (gasPriceGwei * 0.8).toFixed(4),
+          loading: false
+        };
+      }
+    } catch (error) {
+      console.error('Alchemy Base gas fetch failed:', error);
     }
-  } catch (error) {
-    console.error('Alchemy Base gas fetch failed:', error);
-  }
-  
-  return {
-    fast: '0.01',
-    standard: '0.008',
-    safe: '0.005',
-    loading: false
+
+    return {
+      fast: '0.01',
+      standard: '0.008',
+      safe: '0.005',
+      loading: false
+    };
   };
-};
 
   const fetchEthereumGas = async () => {
-  try {
-    const response = await fetch(`https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEYS.ethereum}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'eth_gasPrice',
-        params: [],
-        id: 1
-      })
-    });
-    
-    const data = await response.json();
-    if (data.result) {
-      const gasPriceWei = parseInt(data.result, 16);
-      const gasPriceGwei = gasPriceWei / 1e9;
-      
-      return {
-        fast: (gasPriceGwei * 1.3).toFixed(1),
-        standard: gasPriceGwei.toFixed(1),
-        safe: (gasPriceGwei * 0.8).toFixed(1),
-        loading: false
-      };
+    try {
+      const response = await fetch(`https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_KEYS.ethereum}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_gasPrice',
+          params: [],
+          id: 1
+        })
+      });
+
+      const data = await response.json();
+      if (data.result) {
+        const gasPriceWei = parseInt(data.result, 16);
+        const gasPriceGwei = gasPriceWei / 1e9;
+
+        return {
+          fast: (gasPriceGwei * 1.3).toFixed(1),
+          standard: gasPriceGwei.toFixed(1),
+          safe: (gasPriceGwei * 0.8).toFixed(1),
+          loading: false
+        };
+      }
+    } catch (error) {
+      console.error('Alchemy Ethereum gas fetch failed:', error);
     }
-  } catch (error) {
-    console.error('Alchemy Ethereum gas fetch failed:', error);
-  }
-  
-  return {
-    fast: '30',
-    standard: '25',
-    safe: '20',
-    loading: false
+
+    return {
+      fast: '30',
+      standard: '25',
+      safe: '20',
+      loading: false
+    };
   };
-};
 
   const fetchAllGasPrices = async () => {
     setGasPrices(prev => ({
@@ -407,7 +423,7 @@ const App = () => {
         ethereum: ethGas.status === 'fulfilled' ? ethGas.value : { fast: '25', standard: '20', safe: '15', loading: false },
         base: baseGas.status === 'fulfilled' ? baseGas.value : { fast: '0.01', standard: '0.008', safe: '0.005', loading: false }
       });
-      
+
       setGasUpdateTime(new Date());
     } catch (error) {
       console.error('Failed to fetch gas prices:', error);
@@ -930,7 +946,7 @@ const App = () => {
   // Gas Price Display Component
   const GasPriceDisplay = () => {
     const currentGas = gasPrices[selectedNetwork];
-    
+
     if (!currentGas) return null;
 
     const getGasColor = (network) => {
@@ -2080,172 +2096,220 @@ const App = () => {
     );
   };
 
-  // Main render
-  return (
-    <div className="app">
-      {!showApp ? (
-        // Hero Landing Page
-        <div className="hero-landing">
-          <div className="hero-content">
-            <div className="hero-header">
-              <h1 className="hero-title">MintXEN</h1>
-              <p className="hero-subtitle">Multi-Chain XENFT Minting</p>
-            </div>
 
-            <div className="hero-features">
-              <div className="hero-feature">
-                <span className="feature-emoji">🛡️</span>
-                <span className="feature-text">Your keys, your XENFTs</span>
+// Main render
+return (
+  <div className="app">
+    <DisclaimerPopup 
+      isOpen={showDisclaimer} 
+      onAccept={acceptTerms} 
+    />
+    
+    {hasAccepted ? (
+      <React.Fragment>
+        {!showApp ? (
+          <div className="hero-landing">
+            <div className="hero-content">
+              <div className="hero-header">
+                <h1 className="hero-title">mintXEN</h1>
+                <p className="hero-subtitle">Multi-Chain XENFT Batch Minting</p>
               </div>
-              <div className="hero-feature">
-                <span className="feature-emoji">🤖</span>
-                <span className="feature-text">Automated batch minting</span>
-              </div>
-              <div className="hero-feature">
-                <span className="feature-emoji">🌐</span>
-                <span className="feature-text">Multi-chain support</span>
-              </div>
-            </div>
 
-            <button
-              onClick={() => setShowApp(true)}
-              className="hero-launch-button"
-            >
-              <span className="launch-icon">🚀</span>
-              Launch App
-            </button>
+              <div className="hero-features">
+                <div className="hero-feature">
+                  <span className="feature-emoji">🛡️</span>
+                  <span className="feature-text">Your keys, your XENFTs</span>
+                </div>
+                <div className="hero-feature">
+                  <span className="feature-emoji">🤖</span>
+                  <span className="feature-text">Automated batch minting</span>
+                </div>
+                <div className="hero-feature">
+                  <span className="feature-emoji">🌐</span>
+                  <span className="feature-text">Multi-chain support</span>
+                </div>
+              </div>
 
-            <div className="hero-modes">
-              <div className="hero-mode-card">
-                <div className="mode-emoji">🌈</div>
-                <h3>Rainbow Mode</h3>
-                <p>Create XENFTs across all power groups for colorway variety</p>
-              </div>
-              <div className="hero-mode-card">
-                <div className="mode-emoji">📊</div>
-                <h3>Ladder Mode</h3>
-                <p>Custom term ranges with precise control over minting</p>
-              </div>
-              <div className="hero-mode-card">
-                <div className="mode-emoji">🌐</div>
-                <h3>Multi-Chain</h3>
-                <p>Support for Optimism, Ethereum, and Base networks</p>
+              <button
+                onClick={() => setShowApp(true)}
+                className="hero-launch-button"
+              >
+                <span className="launch-icon">🚀</span>
+                Launch App
+              </button>
+
+              <div className="hero-modes">
+                <div className="hero-mode-card">
+                  <div className="mode-emoji">🌈</div>
+                  <h3>Rainbow Mode</h3>
+                  <p>Create XENFTs across all power groups for colorway variety</p>
+                </div>
+                <div className="hero-mode-card">
+                  <div className="mode-emoji">📊</div>
+                  <h3>Ladder Mode</h3>
+                  <p>Custom term ranges with precise control over minting</p>
+                </div>
+                <div className="hero-mode-card">
+                  <div className="mode-emoji">🌐</div>
+                  <h3>Multi-Chain</h3>
+                  <p>Support for Optimism, Ethereum, and Base networks</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      ) : (
-        // Main App Interface
-        <div className="app-interface">
-          {/* Header */}
-          <header className="app-header">
-            <div className="header-content">
-              <div className="header-left">
-                <button
-                  onClick={() => setShowApp(false)}
-                  className="back-to-home"
-                >
-                  ← Back to Home
-                </button>
-                <h1>MintXEN</h1>
-                {networkInfo && (
-                  <div className="network-status">
-                    <div className="network-indicator" />
-                    <span>{networkInfo.name === 'unknown' ? `Chain ${networkInfo.chainId}` : networkInfo.name}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="header-center">
-                <NetworkSelector />
-                <GasPriceDisplay />
-              </div>
-
-              <div className="header-right">
-                {isConnectedToMetaMask ? (
-                  <div className="wallet-status">
-                    <div className="wallet-info">
-                      <div className="wallet-label">Connected</div>
-                      <div className="wallet-address">
-                        {connectedAddress?.slice(0, 6)}...{connectedAddress?.slice(-4)}
-                      </div>
-                    </div>
-                    <button onClick={disconnectBlockchain} className="btn-disconnect">
-                      Disconnect
-                    </button>
-                  </div>
-                ) : (
+        ) : (
+          <div className="app-interface">
+            <header className="app-header">
+              <div className="header-content">
+                <div className="header-left">
                   <button
-                    onClick={() => connectToBlockchain()}
-                    disabled={isConnecting}
-                    className="btn-connect"
+                    onClick={() => setShowApp(false)}
+                    className="back-to-home"
                   >
-                    {isConnecting ? (
-                      <>
-                        <div className="spinner" />
-                        Connecting...
-                      </>
-                    ) : (
-                      <>🦊 Connect Wallet</>
-                    )}
+                    ← Back to Home
                   </button>
-                )}
-              </div>
-            </div>
-          </header>
+                  <h1>mintXEN</h1>
+                  {networkInfo && (
+                    <div className="network-status">
+                      <div className="network-indicator"></div>
+                      <span>{networkInfo.name === 'unknown' ? `Chain ${networkInfo.chainId}` : networkInfo.name}</span>
+                    </div>
+                  )}
+                </div>
 
-          {/* Main Content */}
-          <main className="main-content">
-            <div className="container">
-              {/* Tab Navigation */}
-              <div className="tab-navigation">
-                <button
-                  onClick={() => setActiveTab('wallet')}
-                  className={`tab-button ${activeTab === 'wallet' ? 'active' : ''}`}
-                >
-                  🔑 Wallet
-                </button>
-                <button
-                  onClick={() => setActiveTab('rainbow')}
-                  className={`tab-button ${activeTab === 'rainbow' ? 'active' : ''}`}
-                  disabled={!wallet || walletStep !== 'complete'}
-                >
-                  🌈 Rainbow
-                </button>
-                <button
-                  onClick={() => setActiveTab('ladder')}
-                  className={`tab-button ${activeTab === 'ladder' ? 'active' : ''}`}
-                  disabled={!wallet || walletStep !== 'complete'}
-                >
-                  📊 Ladder
-                </button>
-                <button
-                  onClick={() => setActiveTab('help')}
-                  className={`tab-button ${activeTab === 'help' ? 'active' : ''}`}
-                  disabled={!wallet || walletStep !== 'complete'}
-                >
-                  📚 Help
-                </button>
-              </div>
+                <div className="header-center">
+                  <NetworkSelector />
+                  <GasPriceDisplay />
+                </div>
 
-              {/* Tab Content */}
-              <div className="tab-panel">
-                {activeTab === 'wallet' && <WalletTab />}
-                {activeTab === 'rainbow' && <RainbowTab />}
-                {activeTab === 'ladder' && <LadderTab />}
-                {activeTab === 'help' && <HelpTab />}
+                <div className="header-right">
+                  {isConnectedToMetaMask ? (
+                    <div className="wallet-status">
+                      <div className="wallet-info">
+                        <div className="wallet-label">Connected</div>
+                        <div className="wallet-address">
+                          {connectedAddress?.slice(0, 6)}...{connectedAddress?.slice(-4)}
+                        </div>
+                      </div>
+                      <button onClick={disconnectBlockchain} className="btn-disconnect">
+                        Disconnect
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => connectToBlockchain()}
+                      disabled={isConnecting}
+                      className="btn-connect"
+                    >
+                      {isConnecting ? (
+                        <React.Fragment>
+                          <div className="spinner"></div>
+                          Connecting...
+                        </React.Fragment>
+                      ) : (
+                        <React.Fragment>🦊 Connect Wallet</React.Fragment>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
-          </main>
+            </header>
 
-          {/* Footer */}
-          <footer className="app-footer">
-            <p>Built for the XEN community • Multi-chain XENFT minting • Your keys, your XENFTs</p>
-          </footer>
+            <main className="main-content">
+              <div className="container">
+                <div className="tab-navigation">
+                  <button
+                    onClick={() => setActiveTab('wallet')}
+                    className={`tab-button ${activeTab === 'wallet' ? 'active' : ''}`}
+                  >
+                    🔑 Wallet
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('rainbow')}
+                    className={`tab-button ${activeTab === 'rainbow' ? 'active' : ''}`}
+                    disabled={!wallet || walletStep !== 'complete'}
+                  >
+                    🌈 Rainbow
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('ladder')}
+                    className={`tab-button ${activeTab === 'ladder' ? 'active' : ''}`}
+                    disabled={!wallet || walletStep !== 'complete'}
+                  >
+                    📊 Ladder
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('help')}
+                    className={`tab-button ${activeTab === 'help' ? 'active' : ''}`}
+                    disabled={!wallet || walletStep !== 'complete'}
+                  >
+                    📚 Help
+                  </button>
+                </div>
+
+                <div className="tab-panel">
+                  {activeTab === 'wallet' && <WalletTab />}
+                  {activeTab === 'rainbow' && <RainbowTab />}
+                  {activeTab === 'ladder' && <LadderTab />}
+                  {activeTab === 'help' && <HelpTab />}
+                </div>
+              </div>
+            </main>
+
+            <footer className="app-footer">
+              <div className="footer-content">
+                <p>Built by XENIANS for XENAINS • 2025 Portal9ine</p>
+                <div className="footer-links">
+                  <a
+                    href="https://x.com/moreworldpace"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="footer-link"
+                    aria-label="Follow on X (Twitter)"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                    </svg>
+                  </a>
+                  <a
+                    href="https://t.me/xenminter"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="footer-link"
+                    aria-label="Join Telegram"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+                    </svg>
+                  </a>
+                  <a
+                    href="https://faircrypto.org/xenft_litepaper.pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="footer-link"
+                    aria-label="Read XENFT Whitepaper"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                  </a>
+                </div>
+              </div>
+            </footer>
+          </div>
+        )}
+      </React.Fragment>
+    ) : (
+      <div className="disclaimer-waiting">
+        <div className="disclaimer-content">
+          <h1 className="hero-title">mintXEN</h1>
+          <p className="hero-subtitle">Multi-Chain XENFT Minting</p>
+          <p className="disclaimer-message">Please review and accept our terms to continue</p>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    )}
+  </div>
+);
 };
 
 export default App;
