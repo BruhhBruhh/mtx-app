@@ -1,17 +1,24 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/mintxen-app/', // Replace with your repo name
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
-  },
+  base: '/',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          ethers: ['ethers']
+        }
+      }
+    }
   },
+  server: {
+    host: '0.0.0.0',
+    port: 3000
+  }
 })
