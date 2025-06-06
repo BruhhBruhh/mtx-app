@@ -12,9 +12,9 @@ const App = () => {
   });
   const [gasUpdateTime, setGasUpdateTime] = useState(null);
   const ALCHEMY_KEYS = {
-  ethereum: "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL",    // Replace with your Ethereum API key
-  optimism: "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL",    // Replace with your Optimism API key  
-  base: "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL"             // Replace with your Base API key
+  ethereum: import.meta.env.VITE_ALCHEMY_ETHEREUM_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL",    // Replace with your Ethereum API key
+  optimism: import.meta.env.VITE_ALCHEMY_OPTIMISM_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL",    // Replace with your Optimism API key  
+  base: import.meta.env.VITE_ALCHEMY_BASE_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL"             // Replace with your Base API key
 };
 
   // Wallet state
