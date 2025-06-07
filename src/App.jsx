@@ -1233,7 +1233,7 @@ const App = () => {
         <div className="mode-header">
           <div className="mode-icon">🌈</div>
           <h3>Rainbow Mode</h3>
-          <p>Bring some color to you XEN WORLD</p>
+          <p>Bring some color into your XEN WORLD</p>
         </div>
 
         <div className="config-section">
