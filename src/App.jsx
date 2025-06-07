@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import DisclaimerPopup from './components/DisclaimerPopup';
 import { useDisclaimer } from './hooks/useDisclaimer';
+import { Analytics } from "@vercel/analytics/next"
 
 // Add error boundary for window.ethereum
 const checkMetaMaskAvailability = () => {
@@ -580,7 +581,7 @@ const App = () => {
 
       const vmu = config.vmu || 128;
       const gasPrice = config.gasPrice || '0.00003';
-      const delay = config.delay || 60000;
+      const delay = config.delay || 5000;
 
       // Use the current provider (default or custom RPC)
       const automatedSigner = new ethers.Wallet(wallet.privateKey, currentProvider);
@@ -762,10 +763,10 @@ const App = () => {
 
       const vmu = config.vmu || 128;
       const gasPrice = config.gasPrice || '0.00003';
-      const delay = config.delay || 60000;
-      const startTerm = config.startTerm || 100;
-      const endTerm = config.endTerm || 250;
-      const batches = config.batches || 1;
+      const delay = config.delay || 5000;
+      const startTerm = config.startTerm || 500;
+      const endTerm = config.endTerm || 505;
+      const batches = config.batches || 3;
 
       const totalTerms = endTerm - startTerm + 1;
       const totalTransactions = totalTerms * batches;
@@ -1216,7 +1217,7 @@ const App = () => {
     const [config, setConfig] = useState({
       vmu: 128,
       gasPrice: '0.00003',
-      delay: 60000,
+      delay: 5000,
       reverse: false
     });
 
@@ -1369,7 +1370,7 @@ const App = () => {
     const [config, setConfig] = useState({
       vmu: 128,
       gasPrice: '0.00003',
-      delay: 60000,
+      delay: 5000,
       startTerm: 100,
       endTerm: 250,
       batches: 1
