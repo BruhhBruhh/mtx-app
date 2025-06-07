@@ -543,7 +543,7 @@ const App = () => {
     setActiveTab('rainbow');
   };
 
-  // Clear stored wallet
+// Clear stored wallet
   const clearStoredWallet = () => {
     sessionStorage.removeItem('encryptedPrivateKey');
     localStorage.removeItem('lastWalletAddress');
@@ -551,6 +551,374 @@ const App = () => {
     setWallet(null);
     setWalletStep('initial');
     setActiveTab('wallet');
+  };
+
+  // Stop minting function
+  const stopMinting = () => {
+    setShouldStopMinting(true);
+    setIsPaused(false);
+    setIsMinting(false);
+    setCurrentTransaction(null);
+  };
+
+  // Pause/Resume functions
+  const pauseMinting = () => {
+    setIsPaused(true);
+  };
+
+  const resumeMinting = () => {
+    setIsPaused(false);
+  };
+
+  // Automated XENFT Minting Functions
+  const startRainbowMinting = async (config = {}) => {
+    if (!wallet || !wallet.privateKey) {
+      setError('No wallet found. Please create or import a wallet first.');
+      return;
+    }
+
+    if (!currentProvider) {
+      setError('Provider not available. Please check your network connection.');
+      return;
+    }
+
+    setIsMinting(true);
+    setMintingProgress(0);
+    setMintingLogs([]);
+    setShouldStopMinting(false);
+    setIsPaused(false);
+
+    const addLog = (message, type = 'info') => {
+      const log = {
+        timestamp: new Date().toLocaleTimeString(),
+        message,
+        type
+      };
+      setMintingLogs(prev => [...prev, log]);
+    };
+
+    try {
+      addLog('🌈 Starting Rainbow Mode minting...', 'info');
+      addLog(`🌐 Network: ${NETWORKS[selectedNetwork].name}`, 'info');
+      addLog(`🔗 RPC: ${getCurrentRpcUrl()}`, 'info');
+
+      const vmu = config.vmu || 128;
+      const gasPrice = config.gasPrice || '0.00003';
+      const delay = config.delay || 5000;
+
+      // Use the current provider (default or custom RPC)
+      const automatedSigner = new ethers.Wallet(wallet.privateKey, currentProvider);
+
+      addLog(`🔑 Using wallet: ${automatedSigner.address}`, 'info');
+
+      // Calculate power groups
+      const powerGroups = [];
+      for (let pg = 7; pg >= 0; pg--) {
+        const term = Math.max(1, calculateTermForPowerGroup(vmu, pg));
+        const actualPowerGroup = calculatePowerGroup(vmu, term);
+        powerGroups.push({
+          name: `Power Group ${pg}`,
+          powerGroup: pg,
+          term: term,
+          actualPowerGroup: actualPowerGroup
+        });
+      }
+
+      if (config.reverse) {
+        powerGroups.reverse();
+      }
+
+      addLog(`Configuration: ${vmu} VMUs, ${gasPrice} gwei, ${powerGroups.length} power groups`, 'info');
+
+      // Create contract instance
+      const contractAddress = getCurrentContractAddress();
+      const contract = new ethers.Contract(contractAddress, XENFT_ABI, automatedSigner);
+
+      for (let i = 0; i < powerGroups.length; i++) {
+        // Check if we should stop
+        if (shouldStopMinting) {
+          addLog('🛑 Minting stopped by user', 'warning');
+          break;
+        }
+
+        const group = powerGroups[i];
+
+        setCurrentTransaction({
+          index: i + 1,
+          total: powerGroups.length,
+          group: group.name,
+          powerGroup: group.powerGroup,
+          term: group.term,
+          vmu: vmu
+        });
+
+        addLog(`[${i + 1}/${powerGroups.length}] Minting ${group.name} (${group.term} days, ${vmu} VMUs)...`, 'info');
+
+        try {
+          // Wait for pause to be lifted
+          while (isPaused && !shouldStopMinting) {
+            addLog('⏸️ Minting paused...', 'warning');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+
+          // Check again if we should stop after pause
+          if (shouldStopMinting) {
+            addLog('🛑 Minting stopped by user', 'warning');
+            break;
+          }
+
+          // Get current nonce for the wallet
+          const nonce = await currentProvider.getTransactionCount(automatedSigner.address, 'pending');
+
+          addLog(`📊 Current nonce: ${nonce}`, 'info');
+          addLog(`⛽ Estimating gas for ${group.term} day term...`, 'info');
+
+          // Estimate gas
+          const estimatedGas = await contract.bulkClaimRank.estimateGas(vmu, group.term);
+          const gasLimit = estimatedGas * BigInt(120) / BigInt(100); // 20% buffer
+
+          addLog(`⛽ Gas limit: ${Number(gasLimit).toLocaleString()} units`, 'info');
+
+          // Prepare transaction with automated signing
+          const txParams = {
+            type: 2,
+            nonce: nonce,
+            maxFeePerGas: ethers.parseUnits(gasPrice, 'gwei'),
+            maxPriorityFeePerGas: ethers.parseUnits(gasPrice, 'gwei'),
+            gasLimit: gasLimit
+          };
+
+          addLog(`🚀 Submitting transaction for ${group.name} (automated)...`, 'info');
+
+          // Send transaction automatically
+          const tx = await contract.bulkClaimRank(vmu, group.term, txParams);
+
+          addLog(`✅ Transaction submitted: ${tx.hash}`, 'info');
+          addLog(`🔗 View on explorer: ${NETWORKS[selectedNetwork].explorer}/tx/${tx.hash}`, 'info');
+
+          addLog('⏳ Waiting for confirmation...', 'info');
+          const receipt = await tx.wait();
+
+          // Calculate costs
+          const gasUsed = BigInt(receipt.gasUsed?.toString() || '0');
+          const effectiveGasPrice = BigInt(receipt.effectiveGasPrice?.toString() || '0');
+          const txEthCost = parseFloat(ethers.formatEther(gasUsed * effectiveGasPrice));
+
+          const ethPrice = 2500; // Simplified for demo
+          const txUsdCost = txEthCost * ethPrice;
+
+          addLog(`🎉 ${group.name} minted successfully! Block: ${receipt.blockNumber}`, 'success');
+          addLog(`💰 Cost: $${txUsdCost.toFixed(4)} (${txEthCost.toFixed(8)} ${NETWORKS[selectedNetwork].currency})`, 'info');
+          addLog(`🎯 Effective power group: ${group.actualPowerGroup} (${vmu} × ${group.term} ÷ 7500 = ${((vmu * group.term) / 7500).toFixed(2)})`, 'info');
+
+          setMintingProgress(((i + 1) / powerGroups.length) * 100);
+
+          if (i < powerGroups.length - 1 && !shouldStopMinting) {
+            addLog(`⏱️ Waiting ${delay / 1000} seconds before next transaction...`, 'info');
+
+            // Break delay into smaller chunks to check for stop signal
+            const delayChunks = Math.ceil(delay / 1000); // 1 second chunks
+            for (let chunk = 0; chunk < delayChunks; chunk++) {
+              if (shouldStopMinting) {
+                addLog('🛑 Minting stopped during delay', 'warning');
+                break;
+              }
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+
+        } catch (err) {
+          addLog(`❌ Failed to mint ${group.name}: ${err.message}`, 'error');
+
+          // Continue with next power group even if one fails
+          if (err.message.includes('insufficient funds')) {
+            addLog(`💸 Insufficient funds detected. Stopping minting process.`, 'error');
+            break;
+          }
+        }
+      }
+
+      if (!shouldStopMinting) {
+        addLog('🎊 Rainbow minting completed!', 'success');
+        addLog('🔍 Check your wallet for new XENFTs!', 'info');
+      }
+
+    } catch (err) {
+      addLog(`❌ Rainbow minting failed: ${err.message}`, 'error');
+    } finally {
+      setIsMinting(false);
+      setCurrentTransaction(null);
+      setShouldStopMinting(false);
+      setIsPaused(false);
+    }
+  };
+
+  const startLadderMinting = async (config = {}) => {
+    if (!wallet || !wallet.privateKey) {
+      setError('No wallet found. Please create or import a wallet first.');
+      return;
+    }
+
+    if (!currentProvider) {
+      setError('Provider not available. Please check your network connection.');
+      return;
+    }
+
+    setIsMinting(true);
+    setMintingProgress(0);
+    setMintingLogs([]);
+    setShouldStopMinting(false);
+    setIsPaused(false);
+
+    const addLog = (message, type = 'info') => {
+      const log = {
+        timestamp: new Date().toLocaleTimeString(),
+        message,
+        type
+      };
+      setMintingLogs(prev => [...prev, log]);
+    };
+
+    try {
+      addLog('📊 Starting Ladder Mode minting...', 'info');
+      addLog(`🌐 Network: ${NETWORKS[selectedNetwork].name}`, 'info');
+      addLog(`🔗 RPC: ${getCurrentRpcUrl()}`, 'info');
+
+      const vmu = config.vmu || 128;
+      const gasPrice = config.gasPrice || '0.00003';
+      const delay = config.delay || 5000;
+      const startTerm = config.startTerm || 500;
+      const endTerm = config.endTerm || 505;
+      const batches = config.batches || 3;
+
+      const totalTerms = endTerm - startTerm + 1;
+      const totalTransactions = totalTerms * batches;
+
+      // Use the current provider (default or custom RPC)
+      const automatedSigner = new ethers.Wallet(wallet.privateKey, currentProvider);
+
+      addLog(`🔑 Using wallet: ${automatedSigner.address}`, 'info');
+      addLog(`📈 Configuration: ${startTerm}-${endTerm} days, ${vmu} VMUs, ${batches} batches per term`, 'info');
+      addLog(`🎯 Total transactions: ${totalTransactions}`, 'info');
+
+      const contractAddress = getCurrentContractAddress();
+      const contract = new ethers.Contract(contractAddress, XENFT_ABI, automatedSigner);
+
+      let txCount = 0;
+
+      for (let term = startTerm; term <= endTerm; term++) {
+        for (let batch = 1; batch <= batches; batch++) {
+          // Check if we should stop
+          if (shouldStopMinting) {
+            addLog('🛑 Minting stopped by user', 'warning');
+            break;
+          }
+
+          txCount++;
+          const powerGroup = calculatePowerGroup(vmu, term);
+
+          setCurrentTransaction({
+            index: txCount,
+            total: totalTransactions,
+            term: term,
+            batch: batch,
+            batches: batches,
+            vmu: vmu,
+            powerGroup: powerGroup
+          });
+
+          addLog(`[${txCount}/${totalTransactions}] Minting ${term}-day XENFT (Batch ${batch}/${batches}, PG: ${powerGroup})...`, 'info');
+
+          try {
+            // Wait for pause to be lifted
+            while (isPaused && !shouldStopMinting) {
+              addLog('⏸️ Minting paused...', 'warning');
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+
+            // Check again if we should stop after pause
+            if (shouldStopMinting) {
+              addLog('🛑 Minting stopped by user', 'warning');
+              break;
+            }
+
+            const nonce = await currentProvider.getTransactionCount(automatedSigner.address, 'pending');
+
+            addLog(`📊 Nonce: ${nonce} | Estimating gas...`, 'info');
+
+            const estimatedGas = await contract.bulkClaimRank.estimateGas(vmu, term);
+            const gasLimit = estimatedGas * BigInt(120) / BigInt(100);
+
+            const txParams = {
+              type: 2,
+              nonce: nonce,
+              maxFeePerGas: ethers.parseUnits(gasPrice, 'gwei'),
+              maxPriorityFeePerGas: ethers.parseUnits(gasPrice, 'gwei'),
+              gasLimit: gasLimit
+            };
+
+            addLog(`🚀 Submitting ${term}-day transaction (automated)...`, 'info');
+            const tx = await contract.bulkClaimRank(vmu, term, txParams);
+            addLog(`✅ Transaction submitted: ${tx.hash}`, 'info');
+
+            addLog('⏳ Waiting for confirmation...', 'info');
+            const receipt = await tx.wait();
+
+            const gasUsed = BigInt(receipt.gasUsed?.toString() || '0');
+            const effectiveGasPrice = BigInt(receipt.effectiveGasPrice?.toString() || '0');
+            const txEthCost = parseFloat(ethers.formatEther(gasUsed * effectiveGasPrice));
+
+            const ethPrice = 2500;
+            const txUsdCost = txEthCost * ethPrice;
+
+            addLog(`🎉 ${term}-day XENFT minted! Block: ${receipt.blockNumber}`, 'success');
+            addLog(`💰 Cost: $${txUsdCost.toFixed(4)} (${txEthCost.toFixed(8)} ${NETWORKS[selectedNetwork].currency})`, 'info');
+
+            setMintingProgress((txCount / totalTransactions) * 100);
+
+            if (txCount < totalTransactions && !shouldStopMinting) {
+              addLog(`⏱️ Waiting ${delay / 1000}s before next transaction...`, 'info');
+
+              // Break delay into smaller chunks to check for stop signal
+              const delayChunks = Math.ceil(delay / 1000); // 1 second chunks
+              for (let chunk = 0; chunk < delayChunks; chunk++) {
+                if (shouldStopMinting) {
+                  addLog('🛑 Minting stopped during delay', 'warning');
+                  break;
+                }
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+
+          } catch (err) {
+            addLog(`❌ Failed to mint ${term}-day XENFT (batch ${batch}): ${err.message}`, 'error');
+
+            if (err.message.includes('insufficient funds')) {
+              addLog(`💸 Insufficient funds. Stopping minting process.`, 'error');
+              return;
+            }
+          }
+        }
+
+        // Check if we should stop after each term
+        if (shouldStopMinting) {
+          break;
+        }
+      }
+
+      if (!shouldStopMinting) {
+        addLog('🎊 Ladder minting completed!', 'success');
+        addLog('🔍 Check your wallet for new XENFTs!', 'info');
+      }
+
+    } catch (err) {
+      addLog(`❌ Ladder minting failed: ${err.message}`, 'error');
+    } finally {
+      setIsMinting(false);
+      setCurrentTransaction(null);
+      setShouldStopMinting(false);
+      setIsPaused(false);
+    }
   };
 
   // Network Selector Component
