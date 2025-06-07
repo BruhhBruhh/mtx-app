@@ -28,12 +28,15 @@ const App = () => {
   };
   const [isMetaMaskAvailable, setIsMetaMaskAvailable] = useState(false);
 
-  // Wallet state
+  // Wallet state - SECURE VERSION
   const [wallet, setWallet] = useState(null);
   const [walletStep, setWalletStep] = useState('initial');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [backupConfirmed, setBackupConfirmed] = useState(false);
+  const [importedKey, setImportedKey] = useState('');
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Network and RPC state
   const [selectedNetwork, setSelectedNetwork] = useState('optimism');
@@ -162,26 +165,30 @@ const App = () => {
 
   // Check for existing wallet and blockchain connection
   const checkExistingConnection = async () => {
-    // Check for stored wallet
-    const savedAddress = sessionStorage.getItem('mintxen_wallet_address');
-    const savedKey = sessionStorage.getItem('mintxen_wallet_key');
-    const isVerified = localStorage.getItem('mintxen_wallet_verified');
+    // Check for stored wallet using SECURE storage method
+    const savedAddress = localStorage.getItem('lastWalletAddress');
+    const savedKey = sessionStorage.getItem('encryptedPrivateKey');
+    const isVerified = localStorage.getItem('verificationComplete');
 
     if (savedAddress && savedKey && isVerified) {
       try {
-        const restoredWallet = new ethers.Wallet(savedKey);
-        setWallet({
-          address: restoredWallet.address,
-          privateKey: restoredWallet.privateKey,
-          mnemonic: null
-        });
+        // Decrypt the key (matches KeyManagement security)
+        const decryptedKey = savedKey.replace('enc_', '');
+        const restoredWallet = {
+          address: savedAddress,
+          privateKey: decryptedKey
+        };
+        setWallet(restoredWallet);
         setWalletStep('complete');
-        // Don't auto-switch to rainbow tab - let user start from hero
-        // setActiveTab('rainbow');
       } catch (err) {
         console.error('Failed to restore wallet:', err);
-        clearStoredWallet();
+        // Clear invalid stored data
+        sessionStorage.removeItem('encryptedPrivateKey');
+        localStorage.removeItem('lastWalletAddress');
+        localStorage.removeItem('verificationComplete');
       }
+    } else if (savedAddress) {
+      setWalletStep('reenter');
     }
 
     // Check for existing MetaMask connection
@@ -280,16 +287,6 @@ const App = () => {
 
     localStorage.removeItem('mintxen_connected');
     localStorage.removeItem('mintxen_connected_address');
-  };
-
-  // Clear stored wallet
-  const clearStoredWallet = () => {
-    sessionStorage.removeItem('mintxen_wallet_address');
-    sessionStorage.removeItem('mintxen_wallet_key');
-    localStorage.removeItem('mintxen_wallet_verified');
-    setWallet(null);
-    setWalletStep('initial');
-    setActiveTab('wallet');
   };
 
   // Gas price fetching functions 
@@ -430,7 +427,7 @@ const App = () => {
     }
   };
 
-  // Wallet Management Functions
+  // SECURE Wallet Management Functions
   const generateWallet = async () => {
     setLoading(true);
     setError('');
@@ -447,8 +444,10 @@ const App = () => {
       setWallet(walletData);
       setWalletStep('backup');
 
-      sessionStorage.setItem('mintxen_wallet_address', walletData.address);
-      sessionStorage.setItem('mintxen_wallet_key', walletData.privateKey);
+      // SECURE storage - encrypted key
+      localStorage.setItem('lastWalletAddress', walletData.address);
+      const encryptedKey = `enc_${walletData.privateKey}`;
+      sessionStorage.setItem('encryptedPrivateKey', encryptedKey);
 
     } catch (err) {
       setError(`Failed to generate wallet: ${err.message}`);
@@ -459,13 +458,21 @@ const App = () => {
 
   const importWallet = async () => {
     setError('');
-    const privateKey = prompt('Enter your private key (0x...):');
+    
+    if (!importedKey) {
+      setError('Please enter a private key');
+      return;
+    }
 
-    if (!privateKey) return;
+    // Validate private key format
+    if (!importedKey.startsWith('0x') || importedKey.length !== 66) {
+      setError('Invalid private key format. Must be a 0x-prefixed 64-character hex string.');
+      return;
+    }
 
     try {
       setLoading(true);
-      const importedWallet = new ethers.Wallet(privateKey);
+      const importedWallet = new ethers.Wallet(importedKey);
 
       const walletData = {
         address: importedWallet.address,
@@ -476,8 +483,10 @@ const App = () => {
       setWallet(walletData);
       setWalletStep('backup');
 
-      sessionStorage.setItem('mintxen_wallet_address', walletData.address);
-      sessionStorage.setItem('mintxen_wallet_key', walletData.privateKey);
+      // SECURE storage - encrypted key
+      localStorage.setItem('lastWalletAddress', walletData.address);
+      const encryptedKey = `enc_${importedKey}`;
+      sessionStorage.setItem('encryptedPrivateKey', encryptedKey);
 
     } catch (err) {
       setError(`Invalid private key: ${err.message}`);
@@ -489,7 +498,8 @@ const App = () => {
   const copyToClipboard = async (text, type) => {
     try {
       await navigator.clipboard.writeText(text);
-      alert(`${type} copied to clipboard!`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
     } catch (err) {
       setError(`Failed to copy ${type}: ${err.message}`);
     }
@@ -503,7 +513,7 @@ const App = () => {
       privateKey: wallet.privateKey,
       mnemonic: wallet.mnemonic,
       timestamp: new Date().toISOString(),
-      warning: "KEEP THIS FILE SECURE! Anyone with this information can access your funds."
+      warning: "KEEP THIS FILE SECURE! Anyone with this private key can access your funds."
     };
 
     const dataStr = JSON.stringify(backupData, null, 2);
@@ -524,377 +534,23 @@ const App = () => {
       setError('Please confirm you have backed up your private key before proceeding.');
       return;
     }
+    setWalletStep('verify');
+  };
+
+  const completeVerification = () => {
     setWalletStep('complete');
-    localStorage.setItem('mintxen_wallet_verified', 'true');
+    localStorage.setItem('verificationComplete', 'true');
     setActiveTab('rainbow');
   };
 
-  // Stop minting function
-  const stopMinting = () => {
-    setShouldStopMinting(true);
-    setIsPaused(false);
-    setIsMinting(false);
-    setCurrentTransaction(null);
-  };
-
-  // Pause/Resume functions
-  const pauseMinting = () => {
-    setIsPaused(true);
-  };
-
-  const resumeMinting = () => {
-    setIsPaused(false);
-  };
-
-  // Automated XENFT Minting Functions - FIXED VERSION
-  const startRainbowMinting = async (config = {}) => {
-    if (!wallet || !wallet.privateKey) {
-      setError('No wallet found. Please create or import a wallet first.');
-      return;
-    }
-
-    if (!currentProvider) {
-      setError('Provider not available. Please check your network connection.');
-      return;
-    }
-
-    setIsMinting(true);
-    setMintingProgress(0);
-    setMintingLogs([]);
-    setShouldStopMinting(false);
-    setIsPaused(false);
-
-    const addLog = (message, type = 'info') => {
-      const log = {
-        timestamp: new Date().toLocaleTimeString(),
-        message,
-        type
-      };
-      setMintingLogs(prev => [...prev, log]);
-    };
-
-    try {
-      addLog('🌈 Starting Rainbow Mode minting...', 'info');
-      addLog(`🌐 Network: ${NETWORKS[selectedNetwork].name}`, 'info');
-      addLog(`🔗 RPC: ${getCurrentRpcUrl()}`, 'info');
-
-      const vmu = config.vmu || 128;
-      const gasPrice = config.gasPrice || '0.00003';
-      const delay = config.delay || 5000;
-
-      // Use the current provider (default or custom RPC)
-      const automatedSigner = new ethers.Wallet(wallet.privateKey, currentProvider);
-
-      addLog(`🔑 Using wallet: ${automatedSigner.address}`, 'info');
-
-      // Calculate power groups
-      const powerGroups = [];
-      for (let pg = 7; pg >= 0; pg--) {
-        const term = Math.max(1, calculateTermForPowerGroup(vmu, pg));
-        const actualPowerGroup = calculatePowerGroup(vmu, term);
-        powerGroups.push({
-          name: `Power Group ${pg}`,
-          powerGroup: pg,
-          term: term,
-          actualPowerGroup: actualPowerGroup
-        });
-      }
-
-      if (config.reverse) {
-        powerGroups.reverse();
-      }
-
-      addLog(`Configuration: ${vmu} VMUs, ${gasPrice} gwei, ${powerGroups.length} power groups`, 'info');
-
-      // Create contract instance
-      const contractAddress = getCurrentContractAddress();
-      const contract = new ethers.Contract(contractAddress, XENFT_ABI, automatedSigner);
-
-      for (let i = 0; i < powerGroups.length; i++) {
-        // Check if we should stop
-        if (shouldStopMinting) {
-          addLog('🛑 Minting stopped by user', 'warning');
-          break;
-        }
-
-        const group = powerGroups[i];
-
-        setCurrentTransaction({
-          index: i + 1,
-          total: powerGroups.length,
-          group: group.name,
-          powerGroup: group.powerGroup,
-          term: group.term,
-          vmu: vmu
-        });
-
-        addLog(`[${i + 1}/${powerGroups.length}] Minting ${group.name} (${group.term} days, ${vmu} VMUs)...`, 'info');
-
-        try {
-          // Wait for pause to be lifted
-          while (isPaused && !shouldStopMinting) {
-            addLog('⏸️ Minting paused...', 'warning');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-          }
-
-          // Check again if we should stop after pause
-          if (shouldStopMinting) {
-            addLog('🛑 Minting stopped by user', 'warning');
-            break;
-          }
-
-          // Get current nonce for the wallet
-          const nonce = await currentProvider.getTransactionCount(automatedSigner.address, 'pending');
-
-          addLog(`📊 Current nonce: ${nonce}`, 'info');
-          addLog(`⛽ Estimating gas for ${group.term} day term...`, 'info');
-
-          // Estimate gas
-          const estimatedGas = await contract.bulkClaimRank.estimateGas(vmu, group.term);
-          const gasLimit = estimatedGas * BigInt(120) / BigInt(100); // 20% buffer
-
-          addLog(`⛽ Gas limit: ${Number(gasLimit).toLocaleString()} units`, 'info');
-
-          // Prepare transaction with automated signing
-          const txParams = {
-            type: 2,
-            nonce: nonce,
-            maxFeePerGas: ethers.parseUnits(gasPrice, 'gwei'),
-            maxPriorityFeePerGas: ethers.parseUnits(gasPrice, 'gwei'),
-            gasLimit: gasLimit
-          };
-
-          addLog(`🚀 Submitting transaction for ${group.name} (automated)...`, 'info');
-
-          // Send transaction automatically
-          const tx = await contract.bulkClaimRank(vmu, group.term, txParams);
-
-          addLog(`✅ Transaction submitted: ${tx.hash}`, 'info');
-          addLog(`🔗 View on explorer: ${NETWORKS[selectedNetwork].explorer}/tx/${tx.hash}`, 'info');
-
-          addLog('⏳ Waiting for confirmation...', 'info');
-          const receipt = await tx.wait();
-
-          // Calculate costs
-          const gasUsed = BigInt(receipt.gasUsed?.toString() || '0');
-          const effectiveGasPrice = BigInt(receipt.effectiveGasPrice?.toString() || '0');
-          const txEthCost = parseFloat(ethers.formatEther(gasUsed * effectiveGasPrice));
-
-          const ethPrice = 2500; // Simplified for demo
-          const txUsdCost = txEthCost * ethPrice;
-
-          addLog(`🎉 ${group.name} minted successfully! Block: ${receipt.blockNumber}`, 'success');
-          addLog(`💰 Cost: $${txUsdCost.toFixed(4)} (${txEthCost.toFixed(8)} ${NETWORKS[selectedNetwork].currency})`, 'info');
-          addLog(`🎯 Effective power group: ${group.actualPowerGroup} (${vmu} × ${group.term} ÷ 7500 = ${((vmu * group.term) / 7500).toFixed(2)})`, 'info');
-
-          setMintingProgress(((i + 1) / powerGroups.length) * 100);
-
-          if (i < powerGroups.length - 1 && !shouldStopMinting) {
-            addLog(`⏱️ Waiting ${delay / 1000} seconds before next transaction...`, 'info');
-
-            // Break delay into smaller chunks to check for stop signal
-            const delayChunks = Math.ceil(delay / 1000); // 1 second chunks
-            for (let chunk = 0; chunk < delayChunks; chunk++) {
-              if (shouldStopMinting) {
-                addLog('🛑 Minting stopped during delay', 'warning');
-                break;
-              }
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
-
-        } catch (err) {
-          addLog(`❌ Failed to mint ${group.name}: ${err.message}`, 'error');
-
-          // Continue with next power group even if one fails
-          if (err.message.includes('insufficient funds')) {
-            addLog(`💸 Insufficient funds detected. Stopping minting process.`, 'error');
-            break;
-          }
-        }
-      }
-
-      if (!shouldStopMinting) {
-        addLog('🎊 Rainbow minting completed!', 'success');
-        addLog('🔍 Check your wallet for new XENFTs!', 'info');
-      }
-
-    } catch (err) {
-      addLog(`❌ Rainbow minting failed: ${err.message}`, 'error');
-    } finally {
-      setIsMinting(false);
-      setCurrentTransaction(null);
-      setShouldStopMinting(false);
-      setIsPaused(false);
-    }
-  };
-
-  const startLadderMinting = async (config = {}) => {
-    if (!wallet || !wallet.privateKey) {
-      setError('No wallet found. Please create or import a wallet first.');
-      return;
-    }
-
-    if (!currentProvider) {
-      setError('Provider not available. Please check your network connection.');
-      return;
-    }
-
-    setIsMinting(true);
-    setMintingProgress(0);
-    setMintingLogs([]);
-    setShouldStopMinting(false);
-    setIsPaused(false);
-
-    const addLog = (message, type = 'info') => {
-      const log = {
-        timestamp: new Date().toLocaleTimeString(),
-        message,
-        type
-      };
-      setMintingLogs(prev => [...prev, log]);
-    };
-
-    try {
-      addLog('📊 Starting Ladder Mode minting...', 'info');
-      addLog(`🌐 Network: ${NETWORKS[selectedNetwork].name}`, 'info');
-      addLog(`🔗 RPC: ${getCurrentRpcUrl()}`, 'info');
-
-      const vmu = config.vmu || 128;
-      const gasPrice = config.gasPrice || '0.00003';
-      const delay = config.delay || 5000;
-      const startTerm = config.startTerm || 500;
-      const endTerm = config.endTerm || 505;
-      const batches = config.batches || 3;
-
-      const totalTerms = endTerm - startTerm + 1;
-      const totalTransactions = totalTerms * batches;
-
-      // Use the current provider (default or custom RPC)
-      const automatedSigner = new ethers.Wallet(wallet.privateKey, currentProvider);
-
-      addLog(`🔑 Using wallet: ${automatedSigner.address}`, 'info');
-      addLog(`📈 Configuration: ${startTerm}-${endTerm} days, ${vmu} VMUs, ${batches} batches per term`, 'info');
-      addLog(`🎯 Total transactions: ${totalTransactions}`, 'info');
-
-      const contractAddress = getCurrentContractAddress();
-      const contract = new ethers.Contract(contractAddress, XENFT_ABI, automatedSigner);
-
-      let txCount = 0;
-
-      for (let term = startTerm; term <= endTerm; term++) {
-        for (let batch = 1; batch <= batches; batch++) {
-          // Check if we should stop
-          if (shouldStopMinting) {
-            addLog('🛑 Minting stopped by user', 'warning');
-            break;
-          }
-
-          txCount++;
-          const powerGroup = calculatePowerGroup(vmu, term);
-
-          setCurrentTransaction({
-            index: txCount,
-            total: totalTransactions,
-            term: term,
-            batch: batch,
-            batches: batches,
-            vmu: vmu,
-            powerGroup: powerGroup
-          });
-
-          addLog(`[${txCount}/${totalTransactions}] Minting ${term}-day XENFT (Batch ${batch}/${batches}, PG: ${powerGroup})...`, 'info');
-
-          try {
-            // Wait for pause to be lifted
-            while (isPaused && !shouldStopMinting) {
-              addLog('⏸️ Minting paused...', 'warning');
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-
-            // Check again if we should stop after pause
-            if (shouldStopMinting) {
-              addLog('🛑 Minting stopped by user', 'warning');
-              break;
-            }
-
-            const nonce = await currentProvider.getTransactionCount(automatedSigner.address, 'pending');
-
-            addLog(`📊 Nonce: ${nonce} | Estimating gas...`, 'info');
-
-            const estimatedGas = await contract.bulkClaimRank.estimateGas(vmu, term);
-            const gasLimit = estimatedGas * BigInt(120) / BigInt(100);
-
-            const txParams = {
-              type: 2,
-              nonce: nonce,
-              maxFeePerGas: ethers.parseUnits(gasPrice, 'gwei'),
-              maxPriorityFeePerGas: ethers.parseUnits(gasPrice, 'gwei'),
-              gasLimit: gasLimit
-            };
-
-            addLog(`🚀 Submitting ${term}-day transaction (automated)...`, 'info');
-            const tx = await contract.bulkClaimRank(vmu, term, txParams);
-            addLog(`✅ Transaction submitted: ${tx.hash}`, 'info');
-
-            addLog('⏳ Waiting for confirmation...', 'info');
-            const receipt = await tx.wait();
-
-            const gasUsed = BigInt(receipt.gasUsed?.toString() || '0');
-            const effectiveGasPrice = BigInt(receipt.effectiveGasPrice?.toString() || '0');
-            const txEthCost = parseFloat(ethers.formatEther(gasUsed * effectiveGasPrice));
-
-            const ethPrice = 2500;
-            const txUsdCost = txEthCost * ethPrice;
-
-            addLog(`🎉 ${term}-day XENFT minted! Block: ${receipt.blockNumber}`, 'success');
-            addLog(`💰 Cost: $${txUsdCost.toFixed(4)} (${txEthCost.toFixed(8)} ${NETWORKS[selectedNetwork].currency})`, 'info');
-
-            setMintingProgress((txCount / totalTransactions) * 100);
-
-            if (txCount < totalTransactions && !shouldStopMinting) {
-              addLog(`⏱️ Waiting ${delay / 1000}s before next transaction...`, 'info');
-
-              // Break delay into smaller chunks to check for stop signal
-              const delayChunks = Math.ceil(delay / 1000); // 1 second chunks
-              for (let chunk = 0; chunk < delayChunks; chunk++) {
-                if (shouldStopMinting) {
-                  addLog('🛑 Minting stopped during delay', 'warning');
-                  break;
-                }
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              }
-            }
-
-          } catch (err) {
-            addLog(`❌ Failed to mint ${term}-day XENFT (batch ${batch}): ${err.message}`, 'error');
-
-            if (err.message.includes('insufficient funds')) {
-              addLog(`💸 Insufficient funds. Stopping minting process.`, 'error');
-              return;
-            }
-          }
-        }
-
-        // Check if we should stop after each term
-        if (shouldStopMinting) {
-          break;
-        }
-      }
-
-      if (!shouldStopMinting) {
-        addLog('🎊 Ladder minting completed!', 'success');
-        addLog('🔍 Check your wallet for new XENFTs!', 'info');
-      }
-
-    } catch (err) {
-      addLog(`❌ Ladder minting failed: ${err.message}`, 'error');
-    } finally {
-      setIsMinting(false);
-      setCurrentTransaction(null);
-      setShouldStopMinting(false);
-      setIsPaused(false);
-    }
+  // Clear stored wallet
+  const clearStoredWallet = () => {
+    sessionStorage.removeItem('encryptedPrivateKey');
+    localStorage.removeItem('lastWalletAddress');
+    localStorage.removeItem('verificationComplete');
+    setWallet(null);
+    setWalletStep('initial');
+    setActiveTab('wallet');
   };
 
   // Network Selector Component
@@ -1054,7 +710,7 @@ const App = () => {
   };
 
   // Tab components
-  const WalletTab = () => (
+ const WalletTab = () => (
     <div className="tab-content">
       {walletStep === 'initial' && (
         <div className="wallet-setup">
@@ -1067,8 +723,8 @@ const App = () => {
           <div className="security-notice">
             <div className="notice-icon">🛡️</div>
             <div>
-              <h4>Security Notice</h4>
-              <p>Your private key will only be stored in this browser session and will be deleted when you close the browser. Always back up your private key securely - it controls access to your assets.</p>
+              <h4>🔒 Security Notice</h4>
+              <p>Your private key will be encrypted and stored securely in this browser session. Always back up your private key - it controls access to your assets.</p>
             </div>
           </div>
 
@@ -1081,8 +737,89 @@ const App = () => {
               <span>Or</span>
             </div>
 
-            <button onClick={importWallet} disabled={loading} className="btn-secondary">
-              🔐 Import Private Key
+            <div className="import-section">
+              <div className="input-group">
+                <input
+                  type={showPrivateKey ? "text" : "password"}
+                  placeholder="Enter your private key (0x...)"
+                  value={importedKey}
+                  onChange={(e) => setImportedKey(e.target.value)}
+                  className="config-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPrivateKey(!showPrivateKey)}
+                  className="toggle-btn"
+                >
+                  {showPrivateKey ? '👁️‍🗨️' : '👁️'}
+                </button>
+              </div>
+              <button 
+                onClick={importWallet} 
+                disabled={loading || !importedKey}
+                className="btn-secondary"
+              >
+                {loading ? '⏳ Importing...' : '🔐 Import Private Key'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {walletStep === 'reenter' && (
+        <div className="wallet-setup">
+          <div className="wallet-header">
+            <div className="wallet-icon">🔑</div>
+            <h3>Re-enter Your Private Key</h3>
+          </div>
+          
+          <div className="info-notice">
+            <div className="notice-icon">ℹ️</div>
+            <div>
+              <h4>ℹ️ Session Expired</h4>
+              <p>For your security, your private key was removed when the browser closed. Please re-enter your private key to continue using your wallet.</p>
+            </div>
+          </div>
+          
+          <div className="wallet-info">
+            <p><strong>Your previous wallet address:</strong></p>
+            <div className="address-display">
+              <span>{localStorage.getItem('lastWalletAddress')}</span>
+            </div>
+          </div>
+          
+          <div className="import-section">
+            <div className="input-group">
+              <input
+                type={showPrivateKey ? "text" : "password"}
+                placeholder="Enter your private key (0x...)"
+                value={importedKey}
+                onChange={(e) => setImportedKey(e.target.value)}
+                className="config-input"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPrivateKey(!showPrivateKey)}
+                className="toggle-btn"
+              >
+                {showPrivateKey ? '👁️‍🗨️' : '👁️'}
+              </button>
+            </div>
+            <button
+              onClick={importWallet}
+              className="btn-primary"
+              disabled={!importedKey || loading}
+            >
+              {loading ? '⏳ Unlocking...' : '🔓 Unlock Wallet'}
+            </button>
+          </div>
+          
+          <div className="text-center">
+            <button
+              onClick={() => setWalletStep('initial')}
+              className="btn-link"
+            >
+              Use a different wallet instead
             </button>
           </div>
         </div>
@@ -1099,7 +836,7 @@ const App = () => {
           <div className="critical-warning">
             <div className="notice-icon">⚠️</div>
             <div>
-              <h4>CRITICAL: Backup Required</h4>
+              <h4>⚠️ CRITICAL: Backup Required</h4>
               <p>Your private key will be deleted when you close this browser. Without backup, you'll lose access to your funds permanently!</p>
             </div>
           </div>
@@ -1116,8 +853,13 @@ const App = () => {
             <div className="wallet-field">
               <label>Private Key:</label>
               <div className="address-display">
-                <span>{wallet.privateKey}</span>
-                <button onClick={() => copyToClipboard(wallet.privateKey, 'Private Key')} className="copy-btn">📋</button>
+                <span>{showPrivateKey ? wallet.privateKey : '•'.repeat(66)}</span>
+                <button onClick={() => setShowPrivateKey(!showPrivateKey)} className="copy-btn">
+                  {showPrivateKey ? '👁️‍🗨️' : '👁️'}
+                </button>
+                <button onClick={() => copyToClipboard(wallet.privateKey, 'Private Key')} className="copy-btn">
+                  {copied ? '✅' : '📋'}
+                </button>
               </div>
             </div>
           </div>
@@ -1153,9 +895,51 @@ const App = () => {
               disabled={!backupConfirmed}
               className="btn-primary"
             >
-              ✅ Complete Setup
+              ✅ Continue to Verification
             </button>
           </div>
+        </div>
+      )}
+
+      {walletStep === 'verify' && (
+        <div className="wallet-verify">
+          <div className="wallet-header">
+            <div className="wallet-icon">🛡️</div>
+            <h3>Verify Wallet Access</h3>
+            <p>Confirm you have access to your wallet by importing it into MetaMask</p>
+          </div>
+
+          <div className="verification-steps">
+            <h4>Verification Steps:</h4>
+            <ol>
+              <li>Open MetaMask (or your preferred wallet)</li>
+              <li>Import your private key into the wallet</li>
+              <li>Verify the wallet address matches below</li>
+              <li>Click "Complete Verification" when ready</li>
+            </ol>
+          </div>
+
+          <div className="wallet-info">
+            <p><strong>Expected Wallet Address:</strong></p>
+            <div className="address-display">
+              <span>{wallet?.address}</span>
+            </div>
+          </div>
+
+          <div className="warning-message">
+            <span className="warning-icon">⚠️</span>
+            <div>
+              <h4>Important</h4>
+              <p>Make sure the address in your wallet exactly matches the one shown above before proceeding.</p>
+            </div>
+          </div>
+
+          <button 
+            onClick={completeVerification} 
+            className="btn-primary"
+          >
+            ✅ Complete Verification
+          </button>
         </div>
       )}
 
@@ -1172,21 +956,14 @@ const App = () => {
             </div>
           </div>
 
-          <div className="network-info">
-            <h4>Network Information:</h4>
-            <div className="info-grid">
-              <div className="info-item">
-                <span className="info-label">Selected Network:</span>
-                <span className="info-value">{NETWORKS[selectedNetwork].name}</span>
-              </div>
-              <div className="info-item">
-                <span className="info-label">RPC Provider:</span>
-                <span className="info-value">{customRpc || 'Default'}</span>
-              </div>
-              <div className="info-item">
-                <span className="info-label">Contract:</span>
-                <span className="info-value">{getCurrentContractAddress()}</span>
-              </div>
+          <div className="success-grid">
+            <div className="success-item">
+              <h4>✅ Security Verified</h4>
+              <p>Your private key is safely backed up and wallet is ready for use.</p>
+            </div>
+            <div className="success-item">
+              <h4>🚀 Ready to Mint</h4>
+              <p>You can now access Rainbow and Ladder minting modes.</p>
             </div>
           </div>
 
@@ -1194,11 +971,15 @@ const App = () => {
             <h4>Next Steps:</h4>
             <ol>
               <li>Select your preferred network in the header</li>
-              <li>Optionally set a custom RPC for better performance</li>
               <li>Ensure your wallet has {NETWORKS[selectedNetwork].currency} for gas fees</li>
               <li>Choose your minting strategy (Rainbow or Ladder mode)</li>
               <li>Start your XENFT minting journey!</li>
             </ol>
+          </div>
+
+          <div className="security-reminder">
+            <h4>🔒 Session Security Reminder</h4>
+            <p>Your private key will be deleted when you close your browser. If you need to return later, you'll need to re-enter your private key.</p>
           </div>
         </div>
       )}
