@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import DisclaimerPopup from './components/DisclaimerPopup';
 import { useDisclaimer } from './hooks/useDisclaimer';
-import { Analytics } from "@vercel/analytics/next"
 
 // Add error boundary for window.ethereum
 const checkMetaMaskAvailability = () => {
