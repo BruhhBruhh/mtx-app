@@ -27,6 +27,8 @@ const App = () => {
     base: import.meta.env.VITE_ALCHEMY_BASE_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL"             // Replace with your Base API key
   };
   const [isMetaMaskAvailable, setIsMetaMaskAvailable] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [formBackup, setFormBackup] = useState({});
 
   // Wallet state - SECURE VERSION
   const [wallet, setWallet] = useState(null);
@@ -144,9 +146,26 @@ const App = () => {
     }
   };
 
+  // Apply dark mode to the body element directly
+  useEffect(() => {
+    if (isDarkMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+
+    // Cleanup when component unmounts
+    return () => {
+      document.body.classList.remove('dark-mode');
+    };
+  }, [isDarkMode]);
+
   // Update provider when network or RPC changes
   useEffect(() => {
-    initializeProvider();
+    backupFormData(); // Save form data before network change
+    initializeProvider().then(() => {
+      restoreFormData(); // Restore form data after network change
+    });
   }, [selectedNetwork, customRpc]);
 
   // Initialize on app load
@@ -287,6 +306,31 @@ const App = () => {
 
     localStorage.removeItem('mintxen_connected');
     localStorage.removeItem('mintxen_connected_address');
+  };
+
+  const backupFormData = () => {
+    const inputs = document.querySelectorAll('.config-input');
+    const backup = {};
+    inputs.forEach((input, index) => {
+      if (input.value) {
+        backup[`input_${index}`] = input.value;
+      }
+    });
+    setFormBackup(backup);
+  };
+
+  // Add this function to restore form data
+  const restoreFormData = () => {
+    setTimeout(() => {
+      const inputs = document.querySelectorAll('.config-input');
+      inputs.forEach((input, index) => {
+        if (formBackup[`input_${index}`]) {
+          input.value = formBackup[`input_${index}`];
+          // Trigger change event to update React state
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    }, 100);
   };
 
   // Gas price fetching functions 
@@ -458,7 +502,7 @@ const App = () => {
 
   const importWallet = async () => {
     setError('');
-    
+
     if (!importedKey) {
       setError('Please enter a private key');
       return;
@@ -543,7 +587,7 @@ const App = () => {
     setActiveTab('rainbow');
   };
 
-// Clear stored wallet
+  // Clear stored wallet
   const clearStoredWallet = () => {
     sessionStorage.removeItem('encryptedPrivateKey');
     localStorage.removeItem('lastWalletAddress');
@@ -1078,7 +1122,7 @@ const App = () => {
   };
 
   // Tab components
- const WalletTab = () => (
+  const WalletTab = () => (
     <div className="tab-content">
       {walletStep === 'initial' && (
         <div className="wallet-setup">
@@ -1122,8 +1166,8 @@ const App = () => {
                   {showPrivateKey ? '👁️‍🗨️' : '👁️'}
                 </button>
               </div>
-              <button 
-                onClick={importWallet} 
+              <button
+                onClick={importWallet}
                 disabled={loading || !importedKey}
                 className="btn-secondary"
               >
@@ -1140,7 +1184,7 @@ const App = () => {
             <div className="wallet-icon">🔑</div>
             <h3>Re-enter Your Private Key</h3>
           </div>
-          
+
           <div className="info-notice">
             <div className="notice-icon">ℹ️</div>
             <div>
@@ -1148,14 +1192,14 @@ const App = () => {
               <p>For your security, your private key was removed when the browser closed. Please re-enter your private key to continue using your wallet.</p>
             </div>
           </div>
-          
+
           <div className="wallet-info">
             <p><strong>Your previous wallet address:</strong></p>
             <div className="address-display">
               <span>{localStorage.getItem('lastWalletAddress')}</span>
             </div>
           </div>
-          
+
           <div className="import-section">
             <div className="input-group">
               <input
@@ -1181,7 +1225,7 @@ const App = () => {
               {loading ? '⏳ Unlocking...' : '🔓 Unlock Wallet'}
             </button>
           </div>
-          
+
           <div className="text-center">
             <button
               onClick={() => setWalletStep('initial')}
@@ -1302,8 +1346,8 @@ const App = () => {
             </div>
           </div>
 
-          <button 
-            onClick={completeVerification} 
+          <button
+            onClick={completeVerification}
             className="btn-primary"
           >
             ✅ Complete Verification
@@ -2248,7 +2292,7 @@ const App = () => {
 
   // Main render
   return (
-    <div className="app">
+    <div className={`app ${isDarkMode ? 'app--dark-mode' : ''}`}>
       <DisclaimerPopup
         isOpen={showDisclaimer}
         onAccept={acceptTerms}
@@ -2318,6 +2362,12 @@ const App = () => {
                       ← Back to Home
                     </button>
                     <h1>mintXEN</h1>
+                    <button
+                      onClick={() => setIsDarkMode(!isDarkMode)}
+                      className="mode-toggle-btn"
+                    >
+                      {isDarkMode ? '🌈 Fun Mode' : '🌙 Dark Mode'}
+                    </button>
                     {networkInfo && (
                       <div className="network-status">
                         <div className="network-indicator"></div>

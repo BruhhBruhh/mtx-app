@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
-import DisclaimerPopup from './components/DisclaimerPopup';
-import { useDisclaimer } from './hooks/useDisclaimer';
+import DisclaimerPopup from '../components/DisclaimerPopup';
+import { useDisclaimer } from '../hooks/useDisclaimer';
 
 // Add error boundary for window.ethereum
 const checkMetaMaskAvailability = () => {

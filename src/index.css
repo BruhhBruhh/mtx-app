@@ -207,6 +207,22 @@
   border-color: rgba(16, 185, 129, 0.5);
 }
 
+/* Isolate form inputs from parent animations */
+.config-input,
+.network-select,
+.rpc-input {
+  isolation: isolate;
+  transform: translateZ(0);
+  contain: layout style;
+}
+
+/* Stable containers for forms */
+.tab-content,
+.config-grid,
+.wallet-actions {
+  isolation: isolate;
+}
+
 /* Enhanced header layout for mobile */
 @media (max-width: 1024px) {
   .header-content {
@@ -655,29 +671,133 @@ html {
 }
 
 body {
-  height: 100vh;
-  background: linear-gradient(
-    135deg,
-    #8b5cf6,  /* purple-500 */
-    #3b82f6,  /* blue-500 */
-    #06b6d4,  /* cyan-500 */
-    #10b981,  /* green-500 */
-    #eab308,  /* yellow-500 */
-    #ef4444,  /* red-500 */
-    #6b7280,  /* gray-500 */
-    #9ca3af   /* gray-400 */
+  /* Vibrant radial rainbow - static by default */
+  background: radial-gradient(
+    circle at center,
+    #ffd700 0%,     /* Gold center */
+    #ff6b35 20%,    /* Orange-red */
+    #ff4757 40%,    /* Red */
+    #2ed573 60%,    /* Green */
+    #3742fa 80%,    /* Blue */
+    #6a4c93 100%    /* Purple edge */
   );
-  background-size: 400% 400%;
-  animation: gradientShift 8s ease infinite;
-  color: white;
-  font-family: 'Sour Gummy', sans-serif;
-  overflow-x: hidden;
+  /* No animation by default */
 }
 
-@keyframes gradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+/* Simple hover effect - just gentle size change, no animation */
+body:hover {
+  background-size: 105% 105%;
+  transition: background-size 0.8s ease;
+}
+
+/* Smooth return to normal when not hovering */
+body:not(:hover) {
+  background-size: 100% 100%;
+  transition: background-size 0.8s ease;
+}
+
+/* Simple colorful dark mode */
+body.dark-mode {
+  background: radial-gradient(
+    circle at center,
+    #2d1b69 0%,
+    #11101d 60%,
+    #1a1a2e 100%
+  ) !important;
+  animation: none !important;
+}
+
+/* Remove hover in dark mode */
+body.dark-mode:hover {
+  background-size: 100% 100% !important;
+}
+
+/* Performance optimization for mobile */
+@media (max-width: 768px) {
+  body:hover {
+    background-size: 102% 102% !important;
+  }
+}
+
+/* Respect user preferences but keep some fun */
+@media (prefers-reduced-motion: reduce) {
+  body:hover {
+    animation: none !important;
+    background-size: 110% 110% !important;
+    transition: background-size 1s ease !important;
+  }
+}
+
+/* Preserve all your existing wallet styles */
+.app--dark-mode .wallet-complete h3,
+.app--dark-mode .wallet-header h3,
+.app--dark-mode .wallet-backup h3,
+.app--dark-mode .wallet-verify h3 {
+  color: white !important;
+}
+
+.app--dark-mode .wallet-info p,
+.app--dark-mode .next-steps h4,
+.app--dark-mode .next-steps li,
+.app--dark-mode .verification-steps h4,
+.app--dark-mode .verification-steps li,
+.app--dark-mode .backup-checklist p,
+.app--dark-mode .backup-checklist li {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.app--dark-mode .success-item h4,
+.app--dark-mode .success-item p {
+  color: white !important;
+}
+
+/* Dark mode text fixes for wallet section */
+.app--dark-mode .wallet-complete h3,
+.app--dark-mode .wallet-header h3,
+.app--dark-mode .wallet-backup h3,
+.app--dark-mode .wallet-verify h3 {
+  color: white !important;
+}
+
+.app--dark-mode .wallet-info p,
+.app--dark-mode .next-steps h4,
+.app--dark-mode .next-steps li,
+.app--dark-mode .verification-steps h4,
+.app--dark-mode .verification-steps li,
+.app--dark-mode .backup-checklist p,
+.app--dark-mode .backup-checklist li {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.app--dark-mode .success-item h4,
+.app--dark-mode .success-item p {
+  color: white !important;
+}
+
+/* Fix the specific elements I can see in your images */
+.app--dark-mode .wallet-complete p,
+.app--dark-mode .wallet-info span,
+.app--dark-mode .success-grid .success-item h4,
+.app--dark-mode .success-grid .success-item p {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Fix the "Next Steps" section text */
+.app--dark-mode .next-steps ol,
+.app--dark-mode .next-steps ol li {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Fix the bottom security reminder */
+.app--dark-mode .security-reminder h4,
+.app--dark-mode .security-reminder p {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Fix any remaining wallet section text */
+.app--dark-mode .wallet-complete .success-grid h4,
+.app--dark-mode .wallet-complete .success-grid p {
+  color: white !important;
 }
 
 /* Typography */
@@ -685,11 +805,39 @@ h1, h2, h3, h4, h5, h6 {
   font-family: 'Cherry Bomb One', cursive;
 }
 
-/* App Layout */
+/* App Layout */ /* Default (fun) mode - what you have now */
 .app {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+}
+
+/* Dark mode - minimal effects */
+.app--dark-mode {
+  /* Override fun animations */
+}
+
+.app--dark-mode body {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+  animation: none !important;
+}
+
+.app--dark-mode .hero-title {
+  animation: none !important;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5) !important;
+}
+
+.app--dark-mode .hero-launch-button {
+  background: #3b82f6 !important;
+  animation: none !important;
+}
+
+/* Remove all backdrop filters in dark mode */
+.app--dark-mode [style*="backdrop-filter"],
+.app--dark-mode .network-selector,
+.app--dark-mode .tab-panel {
+  backdrop-filter: none !important;
+  background: rgba(0, 0, 0, 0.8) !important;
 }
 
 /* Hero Landing Page */
@@ -1330,7 +1478,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .wallet-info {
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.4) !important; /* Semi-transparent instead of solid black */
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 12px;
   padding: 2rem;
@@ -1338,8 +1486,49 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .wallet-info p {
+  color: white !important; /* Force text to be white */
   margin-bottom: 1rem;
   font-weight: 500;
+}
+
+.address-display {
+  background: rgba(0, 0, 0, 0.3) !important; /* Semi-transparent instead of solid black */
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.address-display span {
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+  color: #10b981 !important; /* Keep the green color for address */
+}
+
+/* Fix "Active Wallet:" label */
+.wallet-info p strong,
+.wallet-complete .wallet-info p {
+  color: white !important;
+}
+
+/* Also fix any other wallet section text that might be black */
+.wallet-complete .wallet-info {
+  background: rgba(0, 0, 0, 0.4) !important;
+}
+
+.success-grid .success-item h4,
+.success-grid .success-item p {
+  color: white !important;
+}
+
+/* Fix the bottom security reminder text */
+.security-reminder h4,
+.security-reminder p {
+  color: rgba(255, 255, 255, 0.9) !important;
 }
 
 .next-steps {
@@ -4064,4 +4253,13 @@ h1, h2, h3, h4, h5, h6 {
   .token-header {
     flex-wrap: wrap;
   }
+}
+
+/* Fix wallet section black text */
+.info-notice h4,
+.info-notice p,
+.verification-steps h4,
+.verification-steps ol,
+.verification-steps li {
+  color: white !important;
 }
