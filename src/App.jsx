@@ -175,12 +175,21 @@ const App = () => {
     setIsMetaMaskAvailable(checkMetaMaskAvailability());
   }, []);
 
-  // Gas price updates - ADD THIS
+  // Gas price updates
   useEffect(() => {
     fetchAllGasPrices();
-    const gasInterval = setInterval(fetchAllGasPrices, 30000);
+    const gasInterval = setInterval(fetchAllGasPrices, 120000); // 2 minutes
     return () => clearInterval(gasInterval);
   }, [selectedNetwork, currentProvider]);
+
+  // Add debouncing to provider initialization
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      initializeProvider();
+    }, 500); // 500ms delay to prevent rapid re-runs
+
+    return () => clearTimeout(timeoutId);
+  }, [selectedNetwork, customRpc]);
 
   // Check for existing wallet and blockchain connection
   const checkExistingConnection = async () => {
