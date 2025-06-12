@@ -3,14 +3,6 @@ import { ethers } from 'ethers';
 import DisclaimerPopup from './components/DisclaimerPopup';
 import { useDisclaimer } from './hooks/useDisclaimer';
 
-// Add error boundary for window.ethereum
-const checkMetaMaskAvailability = () => {
-  if (typeof window !== 'undefined' && window.ethereum) {
-    return true;
-  }
-  return false;
-};
-
 const App = () => {
   // App state
   const [showApp, setShowApp] = useState(false);
@@ -26,9 +18,19 @@ const App = () => {
     optimism: import.meta.env.VITE_ALCHEMY_OPTIMISM_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL",    // Replace with your Optimism API key  
     base: import.meta.env.VITE_ALCHEMY_BASE_KEY || "8dASJbrbZeVybFKSf3HWqgLu3uFhskOL"             // Replace with your Base API key
   };
-  const [isMetaMaskAvailable, setIsMetaMaskAvailable] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [formBackup, setFormBackup] = useState({});
+  const [ethPrice, setEthPrice] = useState(2800); // Default fallback price
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [xenftCount, setXenftCount] = useState(0);
+  const [xenftLoading, setXenftLoading] = useState(false);
+  const [sendForm, setSendForm] = useState({
+    toAddress: '',
+    amount: '',
+    gasPrice: ''
+  });
+  const [sendLoading, setSendLoading] = useState(false);
+  const [sendError, setSendError] = useState('');
 
   // Wallet state - SECURE VERSION
   const [wallet, setWallet] = useState(null);
@@ -39,20 +41,17 @@ const App = () => {
   const [importedKey, setImportedKey] = useState('');
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [walletBalance, setWalletBalance] = useState('0.0000');
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceUSD, setBalanceUSD] = useState('0.00');
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
 
   // Network and RPC state
   const [selectedNetwork, setSelectedNetwork] = useState('optimism');
   const [customRpc, setCustomRpc] = useState('');
   const [showRpcInput, setShowRpcInput] = useState(false);
   const [currentProvider, setCurrentProvider] = useState(null);
-
-  // Blockchain connection state
-  const [isConnectedToMetaMask, setIsConnectedToMetaMask] = useState(false);
-  const [web3Provider, setWeb3Provider] = useState(null);
-  const [signer, setSigner] = useState(null);
-  const [connectedAddress, setConnectedAddress] = useState(null);
-  const [networkInfo, setNetworkInfo] = useState(null);
-  const [isConnecting, setIsConnecting] = useState(false);
 
   // Disclaimer state
   const { showDisclaimer, hasAccepted, acceptTerms } = useDisclaimer();
@@ -171,8 +170,6 @@ const App = () => {
   // Initialize on app load
   useEffect(() => {
     checkExistingConnection();
-    setupEventListeners();
-    setIsMetaMaskAvailable(checkMetaMaskAvailability());
   }, []);
 
   // Gas price updates
@@ -190,6 +187,42 @@ const App = () => {
 
     return () => clearTimeout(timeoutId);
   }, [selectedNetwork, customRpc]);
+
+  // Fetch wallet balance every 2 mins if connected
+  useEffect(() => {
+    if (wallet?.address && currentProvider && walletStep === 'complete') {
+      fetchWalletBalance();
+      const interval = setInterval(fetchWalletBalance, 120000);
+      return () => clearInterval(interval);
+    }
+  }, [wallet?.address, currentProvider, selectedNetwork, walletStep]);
+
+  // Fetch ETH price every 5 minutes
+  useEffect(() => {
+    // Fetch price immediately when app loads
+    fetchETHPrice();
+
+    // Update price every 5 minutes (300,000 ms)
+    const priceInterval = setInterval(fetchETHPrice, 300000);
+
+    return () => clearInterval(priceInterval);
+  }, []);
+
+  // Fetch XENFT count and maturity status every minute if connected
+  useEffect(() => {
+    if (wallet?.address && currentProvider && walletStep === 'complete') {
+      fetchWalletBalance();
+      fetchXENFTCount();
+
+      const interval = setInterval(() => {
+        fetchWalletBalance();
+        fetchXENFTCount();
+      }, 120000);
+
+      return () => clearInterval(interval);
+    }
+  }, [wallet?.address, currentProvider, selectedNetwork, walletStep]);
+
 
   // Check for existing wallet and blockchain connection
   const checkExistingConnection = async () => {
@@ -218,103 +251,6 @@ const App = () => {
     } else if (savedAddress) {
       setWalletStep('reenter');
     }
-
-    // Check for existing MetaMask connection
-    if (window.ethereum) {
-      try {
-        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-        if (accounts.length > 0) {
-          await connectToBlockchain(accounts[0]);
-        }
-      } catch (err) {
-        console.error('Failed to check existing connection:', err);
-      }
-    }
-  };
-
-  // Setup MetaMask event listeners
-  const setupEventListeners = () => {
-    if (isMetaMaskAvailable && window.ethereum) {
-      window.ethereum.on('accountsChanged', handleAccountsChanged);
-      window.ethereum.on('chainChanged', handleChainChanged);
-      window.ethereum.on('disconnect', handleDisconnect);
-    }
-  };
-
-  // Handle account changes
-  const handleAccountsChanged = (accounts) => {
-    if (accounts.length === 0) {
-      disconnectBlockchain();
-    } else {
-      connectToBlockchain(accounts[0]);
-    }
-  };
-
-  // Handle network changes
-  const handleChainChanged = () => {
-    window.location.reload();
-  };
-
-  // Handle disconnect
-  const handleDisconnect = () => {
-    disconnectBlockchain();
-  };
-
-  // Connect to blockchain
-  const connectToBlockchain = async (address = null) => {
-    setIsConnecting(true);
-    setError('');
-
-    try {
-      if (!isMetaMaskAvailable) {
-        throw new Error('MetaMask is not installed. The app will work without it for automated minting.');
-      }
-
-      let accounts;
-      if (address) {
-        accounts = [address];
-      } else {
-        accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      }
-
-      if (accounts.length === 0) {
-        throw new Error('No accounts found. Please unlock your wallet.');
-      }
-
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const walletSigner = await provider.getSigner();
-      const network = await provider.getNetwork();
-
-      setWeb3Provider(provider);
-      setSigner(walletSigner);
-      setConnectedAddress(accounts[0]);
-      setIsConnectedToMetaMask(true);
-      setNetworkInfo({
-        name: network.name,
-        chainId: network.chainId.toString()
-      });
-
-      localStorage.setItem('mintxen_connected', 'true');
-      localStorage.setItem('mintxen_connected_address', accounts[0]);
-
-    } catch (err) {
-      setError(`Failed to connect: ${err.message}`);
-      disconnectBlockchain();
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  // Disconnect from blockchain
-  const disconnectBlockchain = () => {
-    setWeb3Provider(null);
-    setSigner(null);
-    setConnectedAddress(null);
-    setIsConnectedToMetaMask(false);
-    setNetworkInfo(null);
-
-    localStorage.removeItem('mintxen_connected');
-    localStorage.removeItem('mintxen_connected_address');
   };
 
   const backupFormData = () => {
@@ -340,6 +276,131 @@ const App = () => {
         }
       });
     }, 100);
+  };
+
+  // Fetch ETH price using CoinGecko API
+  const fetchETHPrice = async () => {
+    setPriceLoading(true);
+    try {
+      // Using CoinGecko API (free, no API key needed)
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+      const data = await response.json();
+
+      if (data.ethereum && data.ethereum.usd) {
+        setEthPrice(data.ethereum.usd);
+        console.log('ETH Price updated:', data.ethereum.usd);
+      }
+    } catch (error) {
+      console.error('Failed to fetch ETH price:', error);
+      // Keep existing price if API fails
+    } finally {
+      setPriceLoading(false);
+    }
+  };
+
+  // Fetch wallet balance using ethers.js
+  const fetchWalletBalance = async () => {
+    if (!wallet?.address || !currentProvider) return;
+
+    setBalanceLoading(true);
+    try {
+      const balance = await currentProvider.getBalance(wallet.address);
+      const ethAmount = ethers.formatEther(balance);
+      setWalletBalance(parseFloat(ethAmount).toFixed(4));
+
+      // Get live ETH price
+      const priceResponse = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+      const priceData = await priceResponse.json();
+      const liveEthPrice = priceData.ethereum.usd;
+
+      const usdValue = (parseFloat(ethAmount) * liveEthPrice).toFixed(2);
+      setBalanceUSD(usdValue);
+
+    } catch (error) {
+      console.error('Failed to fetch balance:', error);
+      const fallbackPrice = 3400;
+      const balance = await currentProvider.getBalance(wallet.address);
+      const ethAmount = ethers.formatEther(balance);
+      setWalletBalance(parseFloat(ethAmount).toFixed(4));
+      const usdValue = (parseFloat(ethAmount) * fallbackPrice).toFixed(2);
+      setBalanceUSD(usdValue);
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
+  // Fetch XENFT count
+  const fetchXENFTCount = async () => {
+    if (!wallet?.address || !currentProvider) return;
+
+    setXenftLoading(true);
+    try {
+      const contractAddress = getCurrentContractAddress();
+      const contract = new ethers.Contract(
+        contractAddress,
+        ['function balanceOf(address owner) view returns (uint256)'],
+        currentProvider
+      );
+
+      const balance = await contract.balanceOf(wallet.address);
+      const count = Number(balance);
+      setXenftCount(count);
+
+      console.log(`Found ${count} XENFTs`);
+
+    } catch (error) {
+      console.error('Failed to fetch XENFT count:', error);
+      setXenftCount(0);
+    } finally {
+      setXenftLoading(false);
+    }
+  };
+
+  // Send function
+  const sendCrypto = async () => {
+    if (!wallet?.privateKey || !currentProvider) {
+      setSendError('Wallet not available');
+      return;
+    }
+
+    setSendLoading(true);
+    setSendError('');
+
+    try {
+      if (!ethers.isAddress(sendForm.toAddress)) {
+        throw new Error('Invalid recipient address');
+      }
+
+      if (parseFloat(sendForm.amount) <= 0) {
+        throw new Error('Amount must be greater than 0');
+      }
+
+      const signer = new ethers.Wallet(wallet.privateKey, currentProvider);
+
+      const tx = {
+        to: sendForm.toAddress,
+        value: ethers.parseEther(sendForm.amount),
+        gasLimit: 21000,
+      };
+
+      if (sendForm.gasPrice) {
+        tx.gasPrice = ethers.parseUnits(sendForm.gasPrice, 'gwei');
+      }
+
+      const transaction = await signer.sendTransaction(tx);
+
+      alert(`Transaction sent! Hash: ${transaction.hash}`);
+
+      setSendForm({ toAddress: '', amount: '', gasPrice: '' });
+      setShowSendModal(false);
+
+      setTimeout(fetchWalletBalance, 2000);
+
+    } catch (error) {
+      setSendError(`Send failed: ${error.message}`);
+    } finally {
+      setSendLoading(false);
+    }
   };
 
   // Gas price fetching functions 
@@ -1130,6 +1191,185 @@ const App = () => {
     );
   };
 
+  // XENFT Portfolio Display Component
+  // Two-Button XENFT Portfolio Component
+  const TwoButtonXENFTPortfolio = () => {
+    const {
+      totalCount,
+      maturedCount,
+      loading,
+      maturityLoading,
+      error,
+      lastUpdate,
+      lastMaturityCheck,
+      cached,
+      progress,
+      checkedCount,
+      isPartialScan
+    } = xenftData;
+
+    const isCustomRPC = customRpc && customRpc.trim() !== '';
+
+    return (
+      <div className="xenft-portfolio-two-button">
+        <div className="portfolio-header-two-button">
+          <div className="portfolio-title">
+            <span className="portfolio-emoji">🎨</span>
+            <span>XENFT Portfolio</span>
+          </div>
+
+          <div className="portfolio-controls">
+            <div className="update-info">
+              {lastUpdate && (
+                <div className="update-time">
+                  Count: {lastUpdate.toLocaleTimeString([], { timeStyle: 'short' })}
+                  {cached && ' (cached)'}
+                </div>
+              )}
+              {lastMaturityCheck && (
+                <div className="update-time maturity">
+                  Maturity: {lastMaturityCheck.toLocaleTimeString([], { timeStyle: 'short' })}
+                </div>
+              )}
+            </div>
+
+            <div className="refresh-buttons">
+              <button
+                onClick={fetchXENFTQuick}
+                disabled={loading}
+                className="quick-refresh-btn"
+                title="Quick refresh - just get total count (1 RPC call)"
+              >
+                <span className="btn-icon">{loading ? '🔄' : '⚡'}</span>
+                <span className="btn-text">Quick</span>
+              </button>
+
+              <button
+                onClick={fetchXENFTFull}
+                disabled={loading || maturityLoading}
+                className="full-refresh-btn"
+                title="Full refresh - check maturity status (many RPC calls)"
+              >
+                <span className="btn-icon">{maturityLoading ? '🔄' : '🔍'}</span>
+                <span className="btn-text">Full Scan</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* RPC Info Banner */}
+        <div className={`rpc-info ${isCustomRPC ? 'custom' : 'default'}`}>
+          <div className="rpc-status">
+            <span className="rpc-label">RPC:</span>
+            <span className="rpc-value">
+              {isCustomRPC ? 'Custom' : 'Default'}
+              {isCustomRPC ? ' (Fast)' : ' (Rate Limited)'}
+            </span>
+          </div>
+          {!isCustomRPC && (
+            <div className="rpc-suggestion">
+              💡 Use custom RPC for faster full scans
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className="portfolio-error-two-button">
+            <span className="error-icon">⚠️</span>
+            <span>{error}</span>
+            <button onClick={fetchXENFTQuick} className="retry-btn">
+              Try Quick Refresh
+            </button>
+          </div>
+        )}
+
+        {loading || (maturityLoading && totalCount === 0) ? (
+          <div className="portfolio-loading-two-button">
+            <div className="loading-spinner-small"></div>
+            <span>
+              {maturityLoading ? `Scanning... ${progress || 0}%` : 'Loading count...'}
+            </span>
+          </div>
+        ) : totalCount === 0 ? (
+          <div className="portfolio-empty-two-button">
+            <div className="empty-icon">🎨</div>
+            <div className="empty-text">
+              <h5>No XENFTs Yet</h5>
+              <p>Start minting to build your collection!</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="portfolio-stats-two-button">
+              <div className="stat-card-two-button primary">
+                <div className="stat-number">{totalCount.toLocaleString()}</div>
+                <div className="stat-label">Total XENFTs</div>
+                <div className="stat-status">
+                  {loading ? 'Updating...' : (cached ? 'Cached' : 'Fresh')}
+                </div>
+              </div>
+
+              <div className="stat-card-two-button secondary">
+                <div className="stat-number">
+                  {maturityLoading ? (
+                    <span className="loading-number">
+                      {progress ? `${progress}%` : '...'}
+                    </span>
+                  ) : (
+                    maturedCount !== null ? maturedCount.toLocaleString() : '?'
+                  )}
+                </div>
+                <div className="stat-label">Mature XENFTs</div>
+                <div className="stat-status">
+                  {maturityLoading ? 'Scanning...' :
+                    maturedCount !== null ? `of ${checkedCount} checked` : 'Click Full Scan'}
+                </div>
+              </div>
+            </div>
+
+            {maturityLoading && (
+              <div className="scanning-progress">
+                <div className="progress-bar">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${progress || 0}%` }}
+                  ></div>
+                </div>
+                <div className="progress-text">
+                  Checking token {checkedCount} for maturity...
+                </div>
+              </div>
+            )}
+
+            {isPartialScan && checkedCount && !maturityLoading && (
+              <div className="scan-notice">
+                ℹ️ Scanned {checkedCount} of {totalCount} XENFTs.
+                {!isCustomRPC && ' Use custom RPC to scan more tokens faster.'}
+              </div>
+            )}
+
+            <div className="portfolio-footer-two-button">
+              <div className="footer-stat">
+                <span className="label">Network:</span>
+                <span className="value">{NETWORKS[selectedNetwork].name}</span>
+              </div>
+              <div className="footer-stat">
+                <span className="label">Last Scan:</span>
+                <span className="value">
+                  {lastMaturityCheck ?
+                    `${checkedCount} tokens` :
+                    'None - click Full Scan'
+                  }
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+
   // Tab components
   const WalletTab = () => (
     <div className="tab-content">
@@ -1374,9 +1614,87 @@ const App = () => {
             <p><strong>Active Wallet:</strong></p>
             <div className="address-display">
               <span>{wallet?.address}</span>
+              <button
+                onClick={() => copyToClipboard(wallet?.address, 'Address')}
+                className="copy-btn"
+              >
+                📋
+              </button>
             </div>
           </div>
 
+          {/* Simplified Balance & XENFT Display */}
+          <div className="wallet-dashboard-simple">
+            {/* ETH Balance Section */}
+            <div className="balance-section">
+              <div className="balance-header">
+                <h4>💰 Balance</h4>
+                <button
+                  onClick={fetchWalletBalance}
+                  className="refresh-btn"
+                  disabled={balanceLoading}
+                >
+                  {balanceLoading ? '🔄' : '↻'}
+                </button>
+              </div>
+
+              <div className="balance-display">
+                <div className="balance-main">
+                  <div className="balance-usd">
+                    ${balanceLoading ? '...' : balanceUSD}
+                  </div>
+                  <div className="balance-eth">
+                    {balanceLoading ? '...' : walletBalance} {NETWORKS[selectedNetwork].currency}
+                  </div>
+                </div>
+              </div>
+
+              <div className="balance-actions">
+                <button
+                  className="action-btn send-btn"
+                  onClick={() => setShowSendModal(true)}
+                >
+                  📤 Send
+                </button>
+                <button
+                  className="action-btn receive-btn"
+                  onClick={() => setShowReceiveModal(true)}
+                >
+                  📥 Receive
+                </button>
+              </div>
+            </div>
+
+            {/* XENFT Count Section */}
+            <div className="xenft-section">
+              <div className="xenft-header">
+                <h4>🎨 XENFTs</h4>
+                <button
+                  onClick={fetchXENFTCount}
+                  className="refresh-btn"
+                  disabled={xenftLoading}
+                >
+                  {xenftLoading ? '🔄' : '↻'}
+                </button>
+              </div>
+
+              <div className="xenft-display">
+                <div className="xenft-count">
+                  {xenftLoading ? '...' : xenftCount}
+                </div>
+                <div className="xenft-label">
+                  Total XENFTs
+                </div>
+                <div className="xenft-network">
+                  on {NETWORKS[selectedNetwork].name}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="section-spacer"></div>
+
+          {/* Success Grid */}
           <div className="success-grid">
             <div className="success-item">
               <h4>✅ Security Verified</h4>
@@ -1388,11 +1706,12 @@ const App = () => {
             </div>
           </div>
 
+          {/* Next Steps */}
           <div className="next-steps">
             <h4>Next Steps:</h4>
             <ol>
-              <li>Select your preferred network in the header</li>
-              <li>Ensure your wallet has {NETWORKS[selectedNetwork].currency} for gas fees</li>
+              <li>Your wallet balance and XENFTs are displayed above</li>
+              <li>Ensure you have {NETWORKS[selectedNetwork].currency} for gas fees</li>
               <li>Choose your minting strategy (Rainbow or Ladder mode)</li>
               <li>Start your XENFT minting journey!</li>
             </ol>
@@ -2377,12 +2696,6 @@ const App = () => {
                     >
                       {isDarkMode ? '🌈 Fun Mode' : '🌙 Dark Mode'}
                     </button>
-                    {networkInfo && (
-                      <div className="network-status">
-                        <div className="network-indicator"></div>
-                        <span>{networkInfo.name === 'unknown' ? `Chain ${networkInfo.chainId}` : networkInfo.name}</span>
-                      </div>
-                    )}
                   </div>
 
                   <div className="header-center">
@@ -2391,33 +2704,29 @@ const App = () => {
                   </div>
 
                   <div className="header-right">
-                    {isConnectedToMetaMask ? (
-                      <div className="wallet-status">
-                        <div className="wallet-info">
-                          <div className="wallet-label">Connected</div>
-                          <div className="wallet-address">
-                            {connectedAddress?.slice(0, 6)}...{connectedAddress?.slice(-4)}
-                          </div>
+                    {/* Show wallet status if wallet is complete */}
+                    {wallet && walletStep === 'complete' ? (
+                      <div className="wallet-status-mini">
+                        <div className="wallet-status-indicator">
+                          <div className="status-dot"></div>
+                          <span className="status-text">Wallet Ready</span>
                         </div>
-                        <button onClick={disconnectBlockchain} className="btn-disconnect">
-                          Disconnect
-                        </button>
+                        <div className="wallet-mini-balance">
+                          {balanceLoading ? (
+                            <span className="balance-loading">...</span>
+                          ) : (
+                            <span className="balance-amount">{walletBalance} {NETWORKS[selectedNetwork].currency}</span>
+                          )}
+                        </div>
                       </div>
                     ) : (
-                      <button
-                        onClick={() => connectToBlockchain()}
-                        disabled={isConnecting}
-                        className="btn-connect"
-                      >
-                        {isConnecting ? (
-                          <React.Fragment>
-                            <div className="spinner"></div>
-                            Connecting...
-                          </React.Fragment>
-                        ) : (
-                          <React.Fragment>🦊 Connect Wallet</React.Fragment>
-                        )}
-                      </button>
+                      <div className="header-info">
+                        <span className="setup-status">
+                          {walletStep === 'initial' && '🔑 Setup Wallet'}
+                          {walletStep === 'backup' && '💾 Backup Required'}
+                          {walletStep === 'verify' && '✅ Verify Wallet'}
+                        </span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -2531,6 +2840,146 @@ const App = () => {
           </div>
         </div>
       )}
+
+      {/* Send Modal - REPLACE with this functional version */}
+      {showSendModal && (
+        <div className="modal-overlay" onClick={() => setShowSendModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>📤 Send {NETWORKS[selectedNetwork].currency}</h3>
+              <button
+                className="modal-close"
+                onClick={() => setShowSendModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <div className="send-form">
+                <div className="config-item">
+                  <label>Recipient Address</label>
+                  <input
+                    type="text"
+                    placeholder="0x..."
+                    value={sendForm.toAddress}
+                    onChange={(e) => setSendForm({ ...sendForm, toAddress: e.target.value })}
+                    className="config-input"
+                  />
+                </div>
+
+                <div className="config-item">
+                  <label>Amount ({NETWORKS[selectedNetwork].currency})</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    placeholder="0.01"
+                    value={sendForm.amount}
+                    onChange={(e) => setSendForm({ ...sendForm, amount: e.target.value })}
+                    className="config-input"
+                  />
+                  <span className="hint">Available: {walletBalance} {NETWORKS[selectedNetwork].currency}</span>
+                </div>
+
+                <div className="config-item">
+                  <label>Gas Price (gwei) - Optional</label>
+                  <input
+                    type="text"
+                    placeholder="Leave empty for auto"
+                    value={sendForm.gasPrice}
+                    onChange={(e) => setSendForm({ ...sendForm, gasPrice: e.target.value })}
+                    className="config-input"
+                  />
+                </div>
+
+                {sendError && (
+                  <div className="error-message">
+                    <span className="error-icon">⚠️</span>
+                    <p>{sendError}</p>
+                  </div>
+                )}
+
+                <div className="modal-actions">
+                  <button
+                    className="btn-secondary"
+                    onClick={() => setShowSendModal(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={sendCrypto}
+                    disabled={sendLoading || !sendForm.toAddress || !sendForm.amount}
+                  >
+                    {sendLoading ? '⏳ Sending...' : '📤 Send'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receive Modal */}
+      {showReceiveModal && (
+        <div className="modal-overlay" onClick={() => setShowReceiveModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>📥 Receive {NETWORKS[selectedNetwork].currency}</h3>
+              <button
+                className="modal-close"
+                onClick={() => setShowReceiveModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="receive-content">
+                <p>Send {NETWORKS[selectedNetwork].currency} to this address:</p>
+
+                <div className="address-display receive-address">
+                  <span>{wallet?.address}</span>
+                  <button
+                    onClick={() => copyToClipboard(wallet?.address, 'Address')}
+                    className="copy-btn"
+                  >
+                    {copied ? '✅' : '📋'}
+                  </button>
+                </div>
+
+                <div className="explorer-section">
+                  <h5>🔍 View on Explorer:</h5>
+                  <div className="explorer-buttons">
+                    <a
+                      href={`${NETWORKS[selectedNetwork].explorer}/address/${wallet?.address}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="explorer-btn primary"
+                    >
+                      👤 View Wallet
+                    </a>
+                  </div>
+                </div>
+
+                <div className="qr-code-section">
+                  <h4>QR Code</h4>
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${wallet?.address}`}
+                    alt="QR Code"
+                    className="qr-code"
+                  />
+                </div>
+
+                <div className="receive-warning">
+                  <span className="warning-icon">⚠️</span>
+                  <p>Only send {NETWORKS[selectedNetwork].currency} on {NETWORKS[selectedNetwork].name} network!</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
