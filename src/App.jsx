@@ -2776,6 +2776,35 @@ const App = () => {
               <footer className="app-footer">
                 <div className="footer-content">
                   <p>Built by XENIANS for XENAINS • 2025 Portal9ine</p>
+
+                  {/* Donation Section */}
+                  <div className="footer-donations">
+                    <span className="donations-label">Buy me a coffee, click/copy addy:</span>
+                    <div className="donation-addresses">
+                      <button
+                        className="donation-item"
+                        onClick={() => navigator.clipboard.writeText('0x777628De10687C3Eb91f0Bf409Edb4d04F3f0E35')}
+                        title="Click to copy full ETH address: 0x777628De10687C3Eb91f0Bf409Edb4d04F3f0E35"
+                      >
+                        <strong>ETH:</strong> 0x77762...
+                      </button>
+                      <button
+                        className="donation-item"
+                        onClick={() => navigator.clipboard.writeText('4ycVhN3Le7hNjEeVAH9Jw34JtchNZtBawwCNTdEUtQzu')}
+                        title="Click to copy full SOL address: 4ycVhN3Le7hNjEeVAH9Jw34JtchNZtBawwCNTdEUtQzu"
+                      >
+                        <strong>SOL:</strong> 4ycVhN3...
+                      </button>
+                      <button
+                        className="donation-item"
+                        onClick={() => navigator.clipboard.writeText('bc1qdzmmjvlkcmmflpc7yytluhvfmvm8fnyvukpcul')}
+                        title="Click to copy full BTC address: bc1qdzmmjvlkcmmflpc7yytluhvfmvm8fnyvukpcul"
+                      >
+                        <strong>BTC:</strong> bc1qdzm...
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="footer-links">
                     <a
                       href="https://x.com/moreworldpeace"
