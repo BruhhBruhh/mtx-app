@@ -31,6 +31,57 @@ const App = () => {
   });
   const [sendLoading, setSendLoading] = useState(false);
   const [sendError, setSendError] = useState('');
+  const [persistentFormState, setPersistentFormState] = useState({
+    // Rainbow Mode
+    rainbowVmu: 128,
+    rainbowGasPrice: '0.00003',
+    rainbowDelay: 5,
+    rainbowReverse: false,
+
+    // Ladder Mode  
+    ladderVmu: 128,
+    ladderGasPrice: '0.00003',
+    ladderDelay: 5,
+    ladderStartTerm: 100,
+    ladderEndTerm: 250,
+    ladderBatches: 1,
+
+    // Claim Mode
+    claimStartTokenId: '',
+    claimEndTokenId: '',
+    claimGasPrice: '',
+    claimToAddress: ''
+  });
+
+  // Add claiming state management
+  const [claimingState, setClaimingState] = useState({
+    isScanning: false,
+    scanProgress: 0,
+    isClaiming: false,
+    claimableXENFTs: [],
+    totalVMUs: 0,
+    estimatedTotalCost: 0n,
+    scanLogs: [],
+    status: '',
+    hasSufficientFunds: false,
+    isEstimating: false  // Add this missing state
+  });
+
+  // Universal form state updater
+  const updateFormField = (field, value) => {
+    setPersistentFormState(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const updateClaimField = (field, value) => {
+    if (field.startsWith('claim')) {
+      updateFormField(field, value);
+    } else {
+      setClaimingState(prev => ({ ...prev, [field]: value }));
+    }
+  };
 
   // Wallet state - SECURE VERSION
   const [wallet, setWallet] = useState(null);
@@ -83,7 +134,7 @@ const App = () => {
       explorer: 'https://etherscan.io',
       currency: 'ETH',
       contracts: {
-        xenft: '0x06450dEe7FD2Fb8E39061434BAbCFC05599a6Fb8'
+        xenft: '0x0a252663DBCc0b073063D6420a40319e438Cfa59'
       }
     },
     base: {
@@ -98,10 +149,379 @@ const App = () => {
     }
   };
 
-  // XENFT Contract ABI
+  // XENFT Contract ABI - Complete JSON format
   const XENFT_ABI = [
-    'function bulkClaimRank(uint256 count, uint256 term) returns (uint256)'
+    // ERC721 Standard Functions
+    {
+      "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
+      "name": "ownerOf",
+      "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{ "internalType": "address", "name": "owner", "type": "address" }],
+      "name": "balanceOf",
+      "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
+      "name": "tokenURI",
+      "outputs": [{ "internalType": "string", "name": "", "type": "string" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "to", "type": "address" },
+        { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+      ],
+      "name": "approve",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
+      "name": "getApproved",
+      "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "operator", "type": "address" },
+        { "internalType": "bool", "name": "approved", "type": "bool" }
+      ],
+      "name": "setApprovalForAll",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "owner", "type": "address" },
+        { "internalType": "address", "name": "operator", "type": "address" }
+      ],
+      "name": "isApprovedForAll",
+      "outputs": [{ "internalType": "bool", "name": "", "type": "bool" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "from", "type": "address" },
+        { "internalType": "address", "name": "to", "type": "address" },
+        { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+      ],
+      "name": "transferFrom",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "from", "type": "address" },
+        { "internalType": "address", "name": "to", "type": "address" },
+        { "internalType": "uint256", "name": "tokenId", "type": "uint256" }
+      ],
+      "name": "safeTransferFrom",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "address", "name": "from", "type": "address" },
+        { "internalType": "address", "name": "to", "type": "address" },
+        { "internalType": "uint256", "name": "tokenId", "type": "uint256" },
+        { "internalType": "bytes", "name": "data", "type": "bytes" }
+      ],
+      "name": "safeTransferFrom",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+
+    // XENFT Specific Functions
+    {
+      "inputs": [
+        { "internalType": "uint256", "name": "count", "type": "uint256" },
+        { "internalType": "uint256", "name": "term", "type": "uint256" }
+      ],
+      "name": "bulkClaimRank",
+      "outputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "uint256", "name": "count", "type": "uint256" },
+        { "internalType": "uint256", "name": "term", "type": "uint256" },
+        { "internalType": "uint256", "name": "burning", "type": "uint256" }
+      ],
+      "name": "bulkClaimRankLimited",
+      "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        { "internalType": "uint256", "name": "tokenId", "type": "uint256" },
+        { "internalType": "address", "name": "to", "type": "address" }
+      ],
+      "name": "bulkClaimMintReward",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "ownedTokens",
+      "outputs": [{ "internalType": "uint256[]", "name": "", "type": "uint256[]" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "name": "mintInfo",
+      "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "name": "vmuCount",
+      "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "name": "xenBurned",
+      "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
+      "name": "isApex",
+      "outputs": [{ "internalType": "bool", "name": "apex", "type": "bool" }],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "genesisTs",
+      "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "tokenIdCounter",
+      "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+      "stateMutability": "view",
+      "type": "function"
+    },
+
+    // Events
+    {
+      "anonymous": false,
+      "inputs": [
+        { "indexed": true, "internalType": "address", "name": "user", "type": "address" },
+        { "indexed": false, "internalType": "uint256", "name": "count", "type": "uint256" },
+        { "indexed": false, "internalType": "uint256", "name": "term", "type": "uint256" }
+      ],
+      "name": "StartTorrent",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        { "indexed": true, "internalType": "address", "name": "user", "type": "address" },
+        { "indexed": false, "internalType": "uint256", "name": "tokenId", "type": "uint256" },
+        { "indexed": false, "internalType": "address", "name": "to", "type": "address" }
+      ],
+      "name": "EndTorrent",
+      "type": "event"
+    }
   ];
+
+  // Alternative debugging approach - test contract connection first
+  const testContractConnection = async () => {
+    try {
+      console.log('=== Testing Contract Connection ===');
+
+      const contractAddress = getCurrentContractAddress();
+      console.log('1. Contract Address:', contractAddress);
+      console.log('2. Provider available:', !!currentProvider);
+
+      // Test if contract exists
+      const code = await currentProvider.getCode(contractAddress);
+      console.log('3. Contract exists:', code !== '0x');
+
+      if (code === '0x') {
+        console.error('ERROR: No contract found at this address!');
+        return false;
+      }
+
+      // Try creating contract with minimal ABI first
+      const minimalABI = [
+        {
+          "inputs": [{ "internalType": "uint256", "name": "tokenId", "type": "uint256" }],
+          "name": "ownerOf",
+          "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+          "stateMutability": "view",
+          "type": "function"
+        }
+      ];
+
+      const testContract = new ethers.Contract(contractAddress, minimalABI, currentProvider);
+      console.log('4. Test contract created:', !!testContract);
+      console.log('5. ownerOf function available:', typeof testContract.ownerOf === 'function');
+
+      // Try a test call with a known token ID
+      try {
+        const testTokenId = 826188; // From your scan range
+        const owner = await testContract.ownerOf(testTokenId);
+        console.log(`6. Test call successful - Token ${testTokenId} owner:`, owner);
+        return true;
+      } catch (callError) {
+        console.log('6. Test call failed:', callError.message);
+
+        // If the token doesn't exist, that's actually expected - the error should be different
+        if (callError.message.includes('ERC721: invalid token ID') ||
+          callError.message.includes('owner query for nonexistent token')) {
+          console.log('   -> This is expected for non-existent tokens');
+          return true;
+        }
+        return false;
+      }
+
+    } catch (error) {
+      console.error('Contract connection test failed:', error);
+      return false;
+    }
+  };
+
+  // Modified scanTokenRange with better error handling
+  const scanTokenRangeWithDebug = async () => {
+    // First test the contract connection
+    const connectionOk = await testContractConnection();
+    if (!connectionOk) {
+      setStatus('Contract connection failed. Check console for details.');
+      return;
+    }
+
+    // Your existing validation code...
+    if (!startTokenId || !endTokenId) {
+      setStatus('Please enter valid start and end token IDs.');
+      return;
+    }
+
+    const start = parseInt(startTokenId);
+    const end = parseInt(endTokenId);
+    if (isNaN(start) || isNaN(end) || start > end || start < 0) {
+      setStatus('Invalid token ID range. Ensure start <= end and both are non-negative.');
+      return;
+    }
+
+    setIsScanning(true);
+    setStatus('Scanning token ID range...');
+    setClaimableXENFTs([]);
+    setTotalVMUs(0);
+    setScanProgress(0);
+    setScanLogs([]);
+
+    const signer = getSigner();
+    if (!signer) {
+      setIsScanning(false);
+      return;
+    }
+
+    try {
+      const contractAddress = getCurrentContractAddress();
+      const xenftContract = new ethers.Contract(contractAddress, XENFT_ABI, currentProvider);
+
+      const block = await currentProvider.getBlock('latest');
+      const now = block.timestamp;
+
+      let claimable = [];
+      let vmus = 0;
+
+      const batchSize = 5; // Even smaller batch size for debugging
+      const tokenIds = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+      const totalBatches = Math.ceil(tokenIds.length / batchSize);
+
+      for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+        addLog(`Processing batch ${batchIndex + 1}/${totalBatches}...`);
+
+        const startIdx = batchIndex * batchSize;
+        const endIdx = Math.min(startIdx + batchSize, tokenIds.length);
+        const batchTokens = tokenIds.slice(startIdx, endIdx);
+
+        for (const tokenId of batchTokens) {
+          try {
+            addLog(`Checking token ${tokenId}...`);
+
+            const owner = await xenftContract.ownerOf(tokenId);
+            if (owner.toLowerCase() !== wallet.address.toLowerCase()) {
+              addLog(`Token ${tokenId}: Not owned by wallet (owner: ${owner.slice(0, 6)}...)`);
+              continue;
+            }
+
+            const info = await xenftContract.mintInfo(tokenId);
+            const decoded = decodeMintInfo(BigInt(info));
+            const count = Number(await xenftContract.vmuCount(tokenId));
+
+            addLog(`Token ${tokenId}: Owned! VMU: ${count}, Maturity: ${decoded.maturityTs}, Now: ${now}`);
+
+            if (!decoded.redeemed && decoded.maturityTs <= now) {
+              const tokenData = { tokenId, vmuCount: count, ...decoded };
+              claimable.push(tokenData);
+              vmus += count;
+              addLog(`Token ${tokenId}: CLAIMABLE! Added to list.`);
+            } else {
+              addLog(`Token ${tokenId}: Not claimable (redeemed: ${decoded.redeemed}, mature: ${decoded.maturityTs <= now})`);
+            }
+          } catch (err) {
+            if (err.message.includes('ERC721: invalid token ID') ||
+              err.message.includes('owner query for nonexistent token')) {
+              addLog(`Token ${tokenId}: Does not exist`);
+            } else {
+              addLog(`Token ${tokenId}: Error - ${err.message}`);
+              console.error(`Token ${tokenId} error:`, err);
+            }
+          }
+        }
+
+        setScanProgress(((batchIndex + 1) / totalBatches) * 100);
+        addLog(`Batch ${batchIndex + 1} completed.`);
+
+        if (batchIndex < totalBatches - 1) {
+          await delay(500); // Slower for debugging
+        }
+      }
+
+      setClaimableXENFTs(claimable);
+      setTotalVMUs(vmus);
+      setStatus(
+        claimable.length > 0
+          ? `Found ${claimable.length} claimable XENFTs with ${vmus} total VMUs`
+          : 'No claimable XENFTs found in range.'
+      );
+    } catch (error) {
+      console.error('Scan error:', error);
+      addLog(`FATAL ERROR: ${error.message}`);
+      setStatus('Error scanning: ' + error.message);
+    } finally {
+      setIsScanning(false);
+      setScanProgress(100);
+    }
+  };
 
   // Power Group Calculation
   const POWER_GROUP_SIZE = 7500;
@@ -159,12 +579,14 @@ const App = () => {
     };
   }, [isDarkMode]);
 
-  // Update provider when network or RPC changes
   useEffect(() => {
-    backupFormData(); // Save form data before network change
-    initializeProvider().then(() => {
-      restoreFormData(); // Restore form data after network change
-    });
+    if (wallet?.address && persistentFormState.claimToAddress !== wallet.address) {
+      updateFormField('claimToAddress', wallet.address);
+    }
+  }, [wallet?.address]);
+
+  useEffect(() => {
+    initializeProvider(); // Remove backup/restore calls
   }, [selectedNetwork, customRpc]);
 
   // Initialize on app load
@@ -223,6 +645,11 @@ const App = () => {
     }
   }, [wallet?.address, currentProvider, selectedNetwork, walletStep]);
 
+  useEffect(() => {
+    if (wallet?.address && persistentFormState.claimToAddress === '') {
+      updateFormField('claimToAddress', wallet.address);
+    }
+  }, [wallet?.address]);
 
   // Check for existing wallet and blockchain connection
   const checkExistingConnection = async () => {
@@ -251,31 +678,6 @@ const App = () => {
     } else if (savedAddress) {
       setWalletStep('reenter');
     }
-  };
-
-  const backupFormData = () => {
-    const inputs = document.querySelectorAll('.config-input');
-    const backup = {};
-    inputs.forEach((input, index) => {
-      if (input.value) {
-        backup[`input_${index}`] = input.value;
-      }
-    });
-    setFormBackup(backup);
-  };
-
-  // Add this function to restore form data
-  const restoreFormData = () => {
-    setTimeout(() => {
-      const inputs = document.querySelectorAll('.config-input');
-      inputs.forEach((input, index) => {
-        if (formBackup[`input_${index}`]) {
-          input.value = formBackup[`input_${index}`];
-          // Trigger change event to update React state
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-      });
-    }, 100);
   };
 
   // Fetch ETH price using CoinGecko API
@@ -1149,42 +1551,134 @@ const App = () => {
     );
   };
 
-  // FIXED Input Component - Only fixes the input field issues, keeps original styling
-  const NumberInput = ({ label, value, onChange, placeholder, min, max, step = 1, hint }) => {
-    const [inputValue, setInputValue] = useState('');
+  const NumberInput = ({
+    label,
+    value,
+    onChange,
+    placeholder,
+    min,
+    max,
+    step = 1,
+    hint,
+    formKey,
+    disabled = false
+  }) => {
+    const currentValue = formKey ? persistentFormState[formKey] : value;
+    const [localValue, setLocalValue] = useState(currentValue?.toString() || '');
+    const [isFocused, setIsFocused] = useState(false);
 
-    // Only update input when value changes and field is not focused
+    // Only sync when not focused
     useEffect(() => {
-      setInputValue(value?.toString() || '');
-    }, [value]);
+      if (!isFocused) {
+        setLocalValue(currentValue?.toString() || '');
+      }
+    }, [currentValue, isFocused]);
 
     const handleChange = (e) => {
       const newValue = e.target.value;
-      setInputValue(newValue);
+      setLocalValue(newValue); // Always update local immediately for smooth typing
+    };
 
-      // Convert to number or pass empty string
-      if (newValue === '') {
+    const handleBlur = () => {
+      setIsFocused(false);
+
+      // Validate and update form state on blur
+      if (localValue === '') {
+        if (formKey) updateFormField(formKey, '');
         onChange('');
       } else {
-        const numValue = parseFloat(newValue);
+        const numValue = parseFloat(localValue);
         if (!isNaN(numValue)) {
+          if (formKey) updateFormField(formKey, numValue);
           onChange(numValue);
+        } else {
+          // Reset to last valid value if invalid
+          setLocalValue(currentValue?.toString() || '');
         }
       }
     };
 
+    const handleFocus = () => {
+      setIsFocused(true);
+    };
+
     return (
       <div className="config-item">
-        <label className="config-label">{label}</label>
+        <label className="config-label">
+          {label}
+          {hint && <span className="label-hint">({hint})</span>}
+        </label>
         <input
           type="number"
           min={min}
           max={max}
           step={step}
-          value={inputValue}
+          value={localValue}
           onChange={handleChange}
+          onBlur={handleBlur}
+          onFocus={handleFocus}
           placeholder={placeholder}
-          className="config-input"
+          className={`config-input ${disabled ? 'disabled' : ''}`}
+          disabled={disabled}
+        />
+        {hint && <span className="hint">{hint}</span>}
+      </div>
+    );
+  };
+
+  const TextInput = ({
+    label,
+    value,
+    onChange,
+    placeholder,
+    type = "text",
+    formKey,
+    disabled = false,
+    hint
+  }) => {
+    const currentValue = formKey ? persistentFormState[formKey] : value;
+    const [localValue, setLocalValue] = useState(currentValue || '');
+    const [isFocused, setIsFocused] = useState(false);
+
+    // Only sync when not focused
+    useEffect(() => {
+      if (!isFocused) {
+        setLocalValue(currentValue || '');
+      }
+    }, [currentValue, isFocused]);
+
+    const handleChange = (e) => {
+      const newValue = e.target.value;
+      setLocalValue(newValue); // Always update local immediately for smooth typing
+    };
+
+    const handleBlur = () => {
+      setIsFocused(false);
+
+      // Update form state on blur
+      if (formKey) updateFormField(formKey, localValue);
+      onChange(localValue);
+    };
+
+    const handleFocus = () => {
+      setIsFocused(true);
+    };
+
+    return (
+      <div className="config-item">
+        <label className="config-label">
+          {label}
+          {hint && <span className="label-hint">({hint})</span>}
+        </label>
+        <input
+          type={type}
+          value={localValue}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          onFocus={handleFocus}
+          placeholder={placeholder}
+          className={`config-input ${disabled ? 'disabled' : ''}`}
+          disabled={disabled}
         />
         {hint && <span className="hint">{hint}</span>}
       </div>
@@ -1735,18 +2229,30 @@ const App = () => {
 
   const RainbowTab = () => {
     const [config, setConfig] = useState({
-      vmu: 128,
-      gasPrice: '0.00003',
-      delay: 5000,
-      reverse: false
+      vmu: persistentFormState.rainbowVmu,
+      gasPrice: persistentFormState.rainbowGasPrice,
+      delay: persistentFormState.rainbowDelay * 1000,
+      reverse: persistentFormState.rainbowReverse
     });
 
-    const handleConfigChange = (field, value) => {
-      setConfig(prev => ({ ...prev, [field]: value }));
-    };
+    // Sync config with persistent form state
+    useEffect(() => {
+      setConfig({
+        vmu: persistentFormState.rainbowVmu,
+        gasPrice: persistentFormState.rainbowGasPrice,
+        delay: persistentFormState.rainbowDelay * 1000,
+        reverse: persistentFormState.rainbowReverse
+      });
+    }, [persistentFormState.rainbowVmu, persistentFormState.rainbowGasPrice,
+    persistentFormState.rainbowDelay, persistentFormState.rainbowReverse]);
 
-    const handleStartMinting = () => {
-      startRainbowMinting(config);
+    const handleConfigChange = (field, value) => {
+      const formKey = `rainbow${field.charAt(0).toUpperCase() + field.slice(1)}`;
+      updateFormField(formKey, value);
+      setConfig(prev => ({
+        ...prev,
+        [field]: field === 'delay' ? value * 1000 : value
+      }));
     };
 
     return (
@@ -1754,57 +2260,77 @@ const App = () => {
         <div className="mode-header">
           <div className="mode-icon">🌈</div>
           <h3>Rainbow Mode</h3>
-          <p>Bring some color into your XEN WORLD</p>
+          <p>Create XENFTs across all power groups for maximum variety</p>
         </div>
 
         <div className="config-section">
           <h4>⚙️ Configuration</h4>
-
           <div className="config-grid">
             <NumberInput
               label="VMUs per Transaction"
-              value={config.vmu}
+              value={persistentFormState.rainbowVmu}
               onChange={(value) => handleConfigChange('vmu', value)}
               placeholder="128"
               min={1}
               max={500}
               hint="Higher VMUs = Higher power groups"
+              formKey="rainbowVmu"
+              disabled={isMinting}
             />
 
-            <div className="config-item">
-              <label className="config-label">Gas Price (gwei)</label>
-              <input
-                type="text"
-                value={config.gasPrice}
-                onChange={(e) => handleConfigChange('gasPrice', e.target.value)}
-                placeholder="0.00004"
-                className="config-input"
-              />
-              <span className="hint">Lower = cheaper, slower confirmation</span>
-            </div>
+            <TextInput
+              label="Gas Price"
+              value={persistentFormState.rainbowGasPrice}
+              onChange={(value) => handleConfigChange('gasPrice', value)}
+              placeholder="0.00003"
+              formKey="rainbowGasPrice"
+              disabled={isMinting}
+              hint="gwei - Lower = cheaper, slower"
+            />
 
             <NumberInput
-              label="Delay Between Transactions (seconds)"
-              value={config.delay / 1000}
-              onChange={(value) => handleConfigChange('delay', value ? value * 1000 : '')}
-              placeholder="60"
-              min={5}
-              max={3600}
-              hint="Time between each mint"
+              label="Delay Between Transactions"
+              value={persistentFormState.rainbowDelay}
+              onChange={(value) => handleConfigChange('delay', value)}
+              placeholder="5"
+              min={1}
+              max={300}
+              hint="seconds"
+              formKey="rainbowDelay"
+              disabled={isMinting}
             />
+          </div>
+
+          <div className="options-section">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={persistentFormState.rainbowReverse}
+                onChange={(e) => handleConfigChange('reverse', e.target.checked)}
+                disabled={isMinting}
+              />
+              Reverse order (mint from PG 0 to 7)
+            </label>
           </div>
         </div>
 
-        <div className="options-section">
-          <h4>🔧 Advanced Options</h4>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={config.reverse}
-              onChange={(e) => handleConfigChange('reverse', e.target.checked)}
-            />
-            🔄 Reverse order (mint from PG 0 to 7)
-          </label>
+        {/* Add visual feedback section */}
+        <div className="preview-section">
+          <h4>🎯 Mint Preview</h4>
+          <div className="preview-stats">
+            <div className="stat-item">
+              <span className="stat-label">Total Transactions:</span>
+              <span className="stat-value">8</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Total VMUs:</span>
+              <span className="stat-value">{(persistentFormState.rainbowVmu * 8).toLocaleString()}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Estimated Duration:</span>
+              <span className="stat-value">{Math.round((8 * persistentFormState.rainbowDelay) / 60)} minutes</span>
+            </div>
+          </div>
         </div>
 
         {!wallet && (
@@ -1844,7 +2370,7 @@ const App = () => {
 
         <div className="launch-section">
           <button
-            onClick={handleStartMinting}
+            onClick={() => startRainbowMinting(config)}
             disabled={!wallet || !currentProvider || isMinting}
             className={`launch-button ${(!wallet || !currentProvider || isMinting) ? 'disabled' : ''}`}
           >
@@ -1852,24 +2378,12 @@ const App = () => {
               {isMinting ? '🤖' : '🌈'}
             </span>
             <span className="button-text">
-              {isMinting ? 'Automated Minting in Progress...' : 'Start Automated Rainbow Minting'}
+              {isMinting ? 'Minting in Progress...' : 'Start Rainbow Minting'}
             </span>
           </button>
-
-          {!wallet && (
-            <div className="launch-hint">
-              <p>Need a wallet? Go to the Wallet tab to create or import one.</p>
-            </div>
-          )}
-
-          {!currentProvider && (
-            <div className="launch-hint">
-              <p>Provider not available. Check your network connection.</p>
-            </div>
-          )}
         </div>
 
-        {/* Minting Progress */}
+        {/* Minting Progress Component */}
         {(isMinting || mintingLogs.length > 0) && (
           <MintingProgress
             isMinting={isMinting}
@@ -1888,141 +2402,152 @@ const App = () => {
 
   const LadderTab = () => {
     const [config, setConfig] = useState({
-      vmu: 128,
-      gasPrice: '0.00003',
-      delay: 5000,
-      startTerm: 100,
-      endTerm: 250,
-      batches: 1
+      vmu: persistentFormState.ladderVmu,
+      gasPrice: persistentFormState.ladderGasPrice,
+      delay: persistentFormState.ladderDelay * 1000,
+      startTerm: persistentFormState.ladderStartTerm,
+      endTerm: persistentFormState.ladderEndTerm,
+      batches: persistentFormState.ladderBatches
     });
 
+    // Sync with persistent state
+    useEffect(() => {
+      setConfig({
+        vmu: persistentFormState.ladderVmu,
+        gasPrice: persistentFormState.ladderGasPrice,
+        delay: persistentFormState.ladderDelay * 1000,
+        startTerm: persistentFormState.ladderStartTerm,
+        endTerm: persistentFormState.ladderEndTerm,
+        batches: persistentFormState.ladderBatches
+      });
+    }, [persistentFormState.ladderVmu, persistentFormState.ladderGasPrice,
+    persistentFormState.ladderDelay, persistentFormState.ladderStartTerm,
+    persistentFormState.ladderEndTerm, persistentFormState.ladderBatches]);
+
     const handleConfigChange = (field, value) => {
-      setConfig(prev => ({ ...prev, [field]: value }));
+      const formKey = `ladder${field.charAt(0).toUpperCase() + field.slice(1)}`;
+      updateFormField(formKey, value);
+      setConfig(prev => ({
+        ...prev,
+        [field]: field === 'delay' ? value * 1000 : value
+      }));
     };
 
-    const handleStartMinting = () => {
-      startLadderMinting(config);
-    };
-
+    // Calculations for preview
     const totalTerms = Math.max(0, config.endTerm - config.startTerm + 1);
     const totalTransactions = totalTerms * config.batches;
-    const estimatedHours = (totalTransactions * (config.delay / 1000)) / 3600;
+    const estimatedDuration = (totalTransactions * config.delay) / 1000 / 60; // minutes
 
     return (
       <div className="tab-content">
         <div className="mode-header">
           <div className="mode-icon">📊</div>
           <h3>Ladder Mode</h3>
-          <p>Create custom laddered XENFT terms with precise control over ranges and batching</p>
+          <p>Create custom term ranges with precise control</p>
         </div>
 
         <div className="config-section">
           <h4>⚙️ Configuration</h4>
-
           <div className="config-grid">
             <NumberInput
-              label="Start Term (days)"
-              value={config.startTerm}
+              label="Start Term"
+              value={persistentFormState.ladderStartTerm}
               onChange={(value) => handleConfigChange('startTerm', value)}
               placeholder="100"
               min={1}
               max={666}
-              hint="Starting day term for ladder"
+              hint="days"
+              formKey="ladderStartTerm"
+              disabled={isMinting}
             />
 
             <NumberInput
-              label="End Term (days)"
-              value={config.endTerm}
+              label="End Term"
+              value={persistentFormState.ladderEndTerm}
               onChange={(value) => handleConfigChange('endTerm', value)}
               placeholder="250"
               min={1}
               max={666}
-              hint="Ending day term for ladder"
+              hint="days"
+              formKey="ladderEndTerm"
+              disabled={isMinting}
             />
 
             <NumberInput
               label="Batches per Term"
-              value={config.batches}
-              onChange={(value) => handleConfigChange('batches', value || 1)}
+              value={persistentFormState.ladderBatches}
+              onChange={(value) => handleConfigChange('batches', value)}
               placeholder="1"
               min={1}
               max={10}
-              hint="Number of XENFTs per term"
+              hint="XENFTs per term"
+              formKey="ladderBatches"
+              disabled={isMinting}
             />
 
             <NumberInput
               label="VMUs per Transaction"
-              value={config.vmu}
+              value={persistentFormState.ladderVmu}
               onChange={(value) => handleConfigChange('vmu', value)}
               placeholder="128"
               min={1}
               max={500}
-              hint="Higher VMUs = Higher power groups"
+              hint="Higher = higher power groups"
+              formKey="ladderVmu"
+              disabled={isMinting}
             />
 
-            <div className="config-item">
-              <label className="config-label">Gas Price (gwei)</label>
-              <input
-                type="text"
-                value={config.gasPrice}
-                onChange={(e) => handleConfigChange('gasPrice', e.target.value)}
-                placeholder="0.00004"
-                className="config-input"
-              />
-              <span className="hint">Lower = cheaper, slower confirmation</span>
-            </div>
+            <TextInput
+              label="Gas Price"
+              value={persistentFormState.ladderGasPrice}
+              onChange={(value) => handleConfigChange('gasPrice', value)}
+              placeholder="0.00003"
+              formKey="ladderGasPrice"
+              disabled={isMinting}
+              hint="gwei"
+            />
 
             <NumberInput
-              label="Delay Between Transactions (seconds)"
-              value={config.delay / 1000}
-              onChange={(value) => handleConfigChange('delay', value ? value * 1000 : '')}
-              placeholder="60"
-              min={5}
-              max={3600}
-              hint="Time between each mint"
+              label="Delay Between Transactions"
+              value={persistentFormState.ladderDelay}
+              onChange={(value) => handleConfigChange('delay', value)}
+              placeholder="5"
+              min={1}
+              max={300}
+              hint="seconds"
+              formKey="ladderDelay"
+              disabled={isMinting}
             />
           </div>
         </div>
 
-        <div className="summary-section">
-          <h4>📈 Ladder Summary</h4>
-          <div className="summary-grid">
-            <div className="summary-card">
-              <div className="summary-icon">📊</div>
-              <div>
-                <h5>Total Terms</h5>
-                <p className="summary-value">{totalTerms}</p>
-                <p className="summary-detail">{config.startTerm} to {config.endTerm} days</p>
-              </div>
+        {/* Enhanced preview */}
+        <div className="preview-section">
+          <h4>🎯 Ladder Preview</h4>
+          <div className="preview-stats">
+            <div className="stat-item">
+              <span className="stat-label">Terms:</span>
+              <span className="stat-value">{totalTerms}</span>
             </div>
-
-            <div className="summary-card">
-              <div className="summary-icon">⚡</div>
-              <div>
-                <h5>Transactions</h5>
-                <p className="summary-value">{totalTransactions}</p>
-                <p className="summary-detail">{config.batches} batches per term</p>
-              </div>
+            <div className="stat-item">
+              <span className="stat-label">Total Transactions:</span>
+              <span className="stat-value">{totalTransactions}</span>
             </div>
-
-            <div className="summary-card">
-              <div className="summary-icon">⏱️</div>
-              <div>
-                <h5>Duration</h5>
-                <p className="summary-value">{estimatedHours.toFixed(1)}h</p>
-                <p className="summary-detail">Estimated completion time</p>
-              </div>
+            <div className="stat-item">
+              <span className="stat-label">Total VMUs:</span>
+              <span className="stat-value">{(totalTransactions * config.vmu).toLocaleString()}</span>
             </div>
-
-            <div className="summary-card">
-              <div className="summary-icon">🎯</div>
-              <div>
-                <h5>Total VMUs</h5>
-                <p className="summary-value">{(totalTransactions * config.vmu).toLocaleString()}</p>
-                <p className="summary-detail">Power groups {calculatePowerGroup(config.vmu, config.startTerm)} to {calculatePowerGroup(config.vmu, config.endTerm)}</p>
-              </div>
+            <div className="stat-item">
+              <span className="stat-label">Estimated Duration:</span>
+              <span className="stat-value">{estimatedDuration.toFixed(1)} minutes</span>
             </div>
           </div>
+
+          {config.startTerm >= config.endTerm && (
+            <div className="validation-error">
+              ⚠️ End term must be greater than start term
+            </div>
+          )}
         </div>
 
         {!wallet && (
@@ -2061,7 +2586,7 @@ const App = () => {
 
         <div className="launch-section">
           <button
-            onClick={handleStartMinting}
+            onClick={() => startLadderMinting(config)}
             disabled={!wallet || !currentProvider || isMinting || config.startTerm >= config.endTerm}
             className={`launch-button ${(!wallet || !currentProvider || isMinting || config.startTerm >= config.endTerm) ? 'disabled' : ''}`}
           >
@@ -2069,30 +2594,12 @@ const App = () => {
               {isMinting ? '🤖' : '📊'}
             </span>
             <span className="button-text">
-              {isMinting ? 'Automated Minting in Progress...' : 'Start Automated Ladder Minting'}
+              {isMinting ? 'Minting in Progress...' : 'Start Ladder Minting'}
             </span>
           </button>
-
-          {!wallet && (
-            <div className="launch-hint">
-              <p>Need a wallet? Go to the Wallet tab to create or import one.</p>
-            </div>
-          )}
-
-          {!currentProvider && (
-            <div className="launch-hint">
-              <p>Provider not available. Check your network connection.</p>
-            </div>
-          )}
-
-          {config.startTerm >= config.endTerm && (
-            <div className="validation-error">
-              <p>⚠️ End term must be greater than start term</p>
-            </div>
-          )}
         </div>
 
-        {/* Minting Progress */}
+        {/* Progress display */}
         {(isMinting || mintingLogs.length > 0) && (
           <MintingProgress
             isMinting={isMinting}
@@ -2104,6 +2611,704 @@ const App = () => {
             onResume={resumeMinting}
             isPaused={isPaused}
           />
+        )}
+      </div>
+    );
+  };
+
+  const ClaimTab = () => {
+    const {
+      isScanning,
+      scanProgress,
+      isClaiming,
+      claimableXENFTs,
+      totalVMUs,
+      estimatedTotalCost,
+      scanLogs,
+      status
+    } = claimingState;
+
+    const startTokenId = persistentFormState.claimStartTokenId;
+    const endTokenId = persistentFormState.claimEndTokenId;
+    const customGasPriceGwei = persistentFormState.claimGasPrice;
+    const claimToAddress = persistentFormState.claimToAddress;
+
+    const setIsEstimating = (value) => {
+      setClaimingState(prev => ({ ...prev, isEstimating: value }));
+    };
+
+    const addLog = (message) => {
+      setClaimingState(prev => ({
+        ...prev,
+        scanLogs: [...prev.scanLogs, `${new Date().toLocaleTimeString()}: ${message}`]
+      }));
+      console.log(message);
+    };
+
+    const setIsScanning = (value) => {
+      setClaimingState(prev => ({ ...prev, isScanning: value }));
+    };
+
+    const setScanProgress = (value) => {
+      setClaimingState(prev => ({ ...prev, scanProgress: value }));
+    };
+
+    const setIsClaiming = (value) => {
+      setClaimingState(prev => ({ ...prev, isClaiming: value }));
+    };
+
+    const setStatus = (value) => {
+      setClaimingState(prev => ({ ...prev, status: value }));
+    };
+
+    const setClaimableXENFTs = (value) => {
+      setClaimingState(prev => ({ ...prev, claimableXENFTs: value }));
+    };
+
+    const setTotalVMUs = (value) => {
+      setClaimingState(prev => ({ ...prev, totalVMUs: value }));
+    };
+
+    const setEstimatedTotalCost = (value) => {
+      setClaimingState(prev => ({ ...prev, estimatedTotalCost: value }));
+    };
+
+    const setScanLogs = (value) => {
+      setClaimingState(prev => ({ ...prev, scanLogs: value }));
+    };
+
+    const setHasSufficientFunds = (value) => {
+      setClaimingState(prev => ({ ...prev, hasSufficientFunds: value }));
+    };
+
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    const scanAndClaim = async () => {
+      if (!startTokenId || !endTokenId) {
+        setStatus('Please enter valid start and end token IDs.');
+        return;
+      }
+
+      if (!customGasPriceGwei) {
+        setStatus('Please enter a gas price in gwei.');
+        return;
+      }
+
+      if (!isAddress(claimToAddress)) {
+        setStatus('Please enter a valid claim address.');
+        return;
+      }
+
+      const start = parseInt(startTokenId);
+      const end = parseInt(endTokenId);
+      if (isNaN(start) || isNaN(end) || start > end || start < 0) {
+        setStatus('Invalid token ID range.');
+        return;
+      }
+
+      setIsScanning(true);
+      setStatus('Scanning and claiming tokens...');
+      setClaimableXENFTs([]);
+      setTotalVMUs(0);
+      setScanProgress(0);
+      setScanLogs([]);
+
+      try {
+        const contractAddress = getCurrentContractAddress();
+        const signer = new ethers.Wallet(wallet.privateKey, currentProvider);
+        const signedContract = new ethers.Contract(contractAddress, XENFT_ABI, signer);
+        const gasPrice = parseUnits(customGasPriceGwei, 'gwei');
+        const block = await currentProvider.getBlock('latest');
+        const now = block.timestamp;
+
+        addLog(`Starting scan and claim process...`);
+        addLog(`Gas price: ${customGasPriceGwei} gwei`);
+        addLog(`Claim to: ${claimToAddress.slice(0, 8)}...${claimToAddress.slice(-6)}`);
+
+        let successCount = 0;
+        let failCount = 0;
+        let totalVmus = 0;
+        const totalTokens = end - start + 1;
+
+        for (let tokenId = start; tokenId <= end; tokenId++) {
+          const progress = ((tokenId - start + 1) / totalTokens) * 100;
+          setScanProgress(progress);
+          setStatus(`Processing token ${tokenId}... (${tokenId - start + 1}/${totalTokens})`);
+
+          try {
+            const verification = await verifyTokenClaimable(signedContract, tokenId, now);
+
+            if (!verification.valid) {
+              if (!verification.reason.includes('Not owned') && !verification.reason.includes('Error')) {
+                addLog(`Token ${tokenId}: ${verification.reason}`);
+              }
+              continue;
+            }
+
+            addLog(`CLAIMING Token ${tokenId} (${verification.data.vmuCount} VMUs)...`);
+
+            const tx = await signedContract.bulkClaimMintReward(
+              tokenId,
+              claimToAddress,
+              { gasPrice }
+            );
+
+            addLog(`TX: ${tx.hash.slice(0, 10)}...${tx.hash.slice(-8)}`);
+
+            const receipt = await tx.wait();
+
+            if (receipt.status === 1) {
+              successCount++;
+              totalVmus += verification.data.vmuCount;
+              addLog(`SUCCESS: Token ${tokenId} claimed! Block: ${receipt.blockNumber}`);
+              setStatus(`Claimed ${successCount} tokens, ${totalVmus} VMUs total`);
+            } else {
+              failCount++;
+              addLog(`FAILED: Token ${tokenId} transaction failed`);
+            }
+
+            await delay(1500);
+
+          } catch (error) {
+            if (!error.message.includes('nonexistent token')) {
+              failCount++;
+              addLog(`ERROR: Token ${tokenId} - ${error.message.split('.')[0]}`);
+            }
+          }
+        }
+
+        addLog(`PROCESS COMPLETE!`);
+        addLog(`Successful claims: ${successCount}`);
+        addLog(`Failed attempts: ${failCount}`);
+        addLog(`Total VMUs claimed: ${totalVmus}`);
+
+        setTotalVMUs(totalVmus);
+        setStatus(`Complete! Claimed ${successCount} tokens with ${totalVmus} VMUs`);
+
+      } catch (error) {
+        addLog(`FATAL ERROR: ${error.message}`);
+        setStatus('Process failed: ' + error.message);
+      } finally {
+        setIsScanning(false);
+        setScanProgress(100);
+      }
+    };
+
+    const decodeMintInfo = (infoBigInt) => {
+      let remaining = infoBigInt;
+
+      const redeemed = (remaining & 0xFFn) === 1n;
+      remaining = remaining >> 8n;
+
+      const classIdx = Number(remaining & 0xFFn);
+      remaining = remaining >> 8n;
+
+      const eaa = Number(remaining & 0xFFFFn);
+      remaining = remaining >> 16n;
+
+      const amp = Number(remaining & 0xFFFFn);
+      remaining = remaining >> 16n;
+
+      const rank = remaining & ((1n << 128n) - 1n);
+      remaining = remaining >> 128n;
+
+      const maturityTs = Number(remaining & ((1n << 64n) - 1n));
+      remaining = remaining >> 64n;
+
+      const term = Number(remaining & 0xFFFFn);
+
+      const now = Math.floor(Date.now() / 1000);
+      const oneYearFromNow = now + (365 * 24 * 3600);
+      const tenYearsAgo = now - (10 * 365 * 24 * 3600);
+
+      if (maturityTs < tenYearsAgo || maturityTs > oneYearFromNow) {
+        const term2 = Number(infoBigInt & ((1n << 16n) - 1n));
+        const maturityTs2 = Number((infoBigInt >> 16n) & ((1n << 64n) - 1n));
+        const redeemed2 = ((infoBigInt >> 248n) & 1n) === 1n;
+
+        if (maturityTs2 >= tenYearsAgo && maturityTs2 <= oneYearFromNow) {
+          return { term: term2, maturityTs: maturityTs2, redeemed: redeemed2 };
+        }
+      }
+
+      return { term, maturityTs, redeemed };
+    };
+
+    const formatEther = (value) => {
+      try {
+        if (ethers.formatEther) return ethers.formatEther(value);
+        if (ethers.utils?.formatEther) return ethers.utils.formatEther(value);
+        return (Number(value) / 1e18).toFixed(6);
+      } catch (error) {
+        console.error('Error formatting ether:', error);
+        return '0';
+      }
+    };
+
+    const parseUnits = (value, unit) => {
+      try {
+        if (ethers.parseUnits) return ethers.parseUnits(value, unit);
+        if (ethers.utils?.parseUnits) return ethers.utils.parseUnits(value, unit);
+        if (unit === 'gwei') return BigInt(Math.floor(parseFloat(value) * 1e9));
+        throw new Error('Unable to parse units');
+      } catch (error) {
+        console.error('Error parsing units:', error);
+        throw error;
+      }
+    };
+
+    const isAddress = (address) => {
+      try {
+        if (ethers.isAddress) return ethers.isAddress(address);
+        if (ethers.utils?.isAddress) return ethers.utils.isAddress(address);
+        return /^0x[a-fA-F0-9]{40}$/.test(address);
+      } catch (error) {
+        return false;
+      }
+    };
+
+    const verifyTokenClaimable = async (xenftContract, tokenId, currentTimestamp) => {
+      try {
+        const owner = await xenftContract.ownerOf(tokenId);
+        if (owner.toLowerCase() !== wallet.address.toLowerCase()) {
+          return { valid: false, reason: `Not owned by wallet (owned by ${owner.slice(0, 8)}...)` };
+        }
+
+        const info = await xenftContract.mintInfo(tokenId);
+        const decoded = decodeMintInfo(BigInt(info));
+
+        if (decoded.redeemed) {
+          return { valid: false, reason: 'Already redeemed' };
+        }
+
+        if (decoded.maturityTs > currentTimestamp) {
+          const daysLeft = Math.ceil((decoded.maturityTs - currentTimestamp) / 86400);
+          return { valid: false, reason: `Not mature (${daysLeft} days left)` };
+        }
+
+        const vmuCount = Number(await xenftContract.vmuCount(tokenId));
+        return {
+          valid: true,
+          data: { tokenId, vmuCount, ...decoded }
+        };
+
+      } catch (error) {
+        return { valid: false, reason: `Error: ${error.message}` };
+      }
+    };
+
+    const scanTokenRange = async () => {
+      if (!startTokenId || !endTokenId) {
+        setStatus('Please enter valid start and end token IDs.');
+        return;
+      }
+
+      const start = parseInt(startTokenId);
+      const end = parseInt(endTokenId);
+      if (isNaN(start) || isNaN(end) || start > end || start < 0) {
+        setStatus('Invalid token ID range.');
+        return;
+      }
+
+      setIsScanning(true);
+      setStatus('Scanning tokens...');
+      setClaimableXENFTs([]);
+      setTotalVMUs(0);
+      setScanProgress(0);
+      setScanLogs([]);
+
+      try {
+        const contractAddress = getCurrentContractAddress();
+        const xenftContract = new ethers.Contract(contractAddress, XENFT_ABI, currentProvider);
+        const block = await currentProvider.getBlock('latest');
+        const now = block.timestamp;
+
+        addLog(`Scanning ${end - start + 1} tokens...`);
+        addLog(`Current time: ${new Date(now * 1000).toLocaleString()}`);
+
+        const claimable = [];
+        let totalVmus = 0;
+        let ownedCount = 0;
+
+        const batchSize = 5;
+        const totalTokens = end - start + 1;
+
+        for (let i = start; i <= end; i += batchSize) {
+          const batchEnd = Math.min(i + batchSize - 1, end);
+          addLog(`Processing tokens ${i} to ${batchEnd}...`);
+
+          for (let tokenId = i; tokenId <= batchEnd; tokenId++) {
+            try {
+              const verification = await verifyTokenClaimable(xenftContract, tokenId, now);
+
+              if (verification.valid) {
+                claimable.push(verification.data);
+                totalVmus += verification.data.vmuCount;
+                ownedCount++;
+                addLog(`✅ Token ${tokenId}: Claimable (${verification.data.vmuCount} VMUs)`);
+              } else {
+                if (!verification.reason.includes('Not owned') && !verification.reason.includes('Error')) {
+                  ownedCount++;
+                  addLog(`❌ Token ${tokenId}: ${verification.reason}`);
+                }
+              }
+            } catch (error) {
+              if (!error.message.includes('nonexistent token')) {
+                addLog(`⚠️ Token ${tokenId}: ${error.message}`);
+              }
+            }
+
+            const progress = ((tokenId - start + 1) / totalTokens) * 100;
+            setScanProgress(progress);
+          }
+
+          if (batchEnd < end) {
+            await delay(100);
+          }
+        }
+
+        setClaimableXENFTs(claimable);
+        setTotalVMUs(totalVmus);
+
+        addLog(`\n📊 Scan Results:`);
+        addLog(`- Tokens owned: ${ownedCount}`);
+        addLog(`- Claimable tokens: ${claimable.length}`);
+        addLog(`- Total VMUs: ${totalVmus}`);
+
+        setStatus(
+          claimable.length > 0
+            ? `Found ${claimable.length} claimable XENFTs with ${totalVmus} VMUs`
+            : `Found ${ownedCount} owned tokens, but none are ready to claim`
+        );
+
+      } catch (error) {
+        addLog(`❌ Scan failed: ${error.message}`);
+        setStatus('Scan failed: ' + error.message);
+      } finally {
+        setIsScanning(false);
+        setScanProgress(100);
+      }
+    };
+
+    const estimateAndClaim = async () => {
+      if (!customGasPriceGwei) {
+        setStatus('Please enter a gas price in gwei.');
+        return;
+      }
+
+      if (!isAddress(claimToAddress)) {
+        setStatus('Please enter a valid claim address.');
+        return;
+      }
+
+      if (claimableXENFTs.length === 0) {
+        setStatus('No claimable tokens found. Run scan first.');
+        return;
+      }
+
+      setIsEstimating(true);
+      setStatus('Verifying tokens and estimating costs...');
+
+      try {
+        const contractAddress = getCurrentContractAddress();
+        const signer = new ethers.Wallet(wallet.privateKey, currentProvider);
+        const signedContract = new ethers.Contract(contractAddress, XENFT_ABI, signer);
+        const gasPrice = parseUnits(customGasPriceGwei, 'gwei');
+
+        // Re-verify all tokens before proceeding
+        const block = await currentProvider.getBlock('latest');
+        const now = block.timestamp;
+        const verifiedTokens = [];
+
+        addLog('\n🔍 Re-verifying tokens before claiming...');
+
+        for (const token of claimableXENFTs) {
+          const verification = await verifyTokenClaimable(signedContract, token.tokenId, now);
+          if (verification.valid) {
+            verifiedTokens.push(verification.data);
+            addLog(`✅ Token ${token.tokenId}: Still claimable`);
+          } else {
+            addLog(`❌ Token ${token.tokenId}: ${verification.reason}`);
+          }
+        }
+
+        if (verifiedTokens.length === 0) {
+          setStatus('No tokens are currently claimable. Please scan again.');
+          setClaimableXENFTs([]);
+          setTotalVMUs(0);
+          return;
+        }
+
+        // Estimate gas for verified tokens
+        addLog(`\n⛽ Estimating gas for ${verifiedTokens.length} tokens...`);
+        let totalGas = 0n;
+        const gasEstimates = [];
+
+        for (const token of verifiedTokens) {
+          try {
+            const gasEstimate = await signedContract.bulkClaimMintReward.estimateGas(
+              token.tokenId,
+              claimToAddress
+            );
+            gasEstimates.push({ tokenId: token.tokenId, gas: gasEstimate });
+            totalGas += gasEstimate;
+            addLog(`Token ${token.tokenId}: ${gasEstimate.toString()} gas`);
+          } catch (error) {
+            addLog(`❌ Token ${token.tokenId}: Gas estimation failed - ${error.message}`);
+            return;
+          }
+        }
+
+        // Calculate costs
+        const overheadGas = totalGas + (totalGas * 10n) / 100n; // 10% buffer
+        const totalCost = overheadGas * gasPrice;
+        const balance = await currentProvider.getBalance(wallet.address);
+
+        setEstimatedTotalCost(totalCost);
+        setHasSufficientFunds(balance >= totalCost);
+
+        addLog(`\n💰 Cost Estimation:`);
+        addLog(`- Total gas: ${totalGas.toString()}`);
+        addLog(`- With buffer: ${overheadGas.toString()}`);
+        addLog(`- Total cost: ${formatEther(totalCost)} ETH`);
+        addLog(`- Wallet balance: ${formatEther(balance)} ETH`);
+        addLog(`- Sufficient funds: ${balance >= totalCost ? 'Yes' : 'No'}`);
+
+        if (balance < totalCost) {
+          setStatus(`Insufficient funds. Need ${formatEther(totalCost)} ETH, have ${formatEther(balance)} ETH`);
+          return;
+        }
+
+        // Update state with verified tokens
+        setClaimableXENFTs(verifiedTokens);
+        setTotalVMUs(verifiedTokens.reduce((sum, token) => sum + token.vmuCount, 0));
+
+        setStatus(`Ready to claim ${verifiedTokens.length} tokens. Cost: ${formatEther(totalCost)} ETH`);
+
+        // Auto-proceed to claiming if user wants
+        if (window.confirm(`Claim ${verifiedTokens.length} XENFTs for ${formatEther(totalCost)} ETH?`)) {
+          await executeClaimTransactions(signedContract, verifiedTokens, gasPrice);
+        }
+
+      } catch (error) {
+        addLog(`❌ Estimation failed: ${error.message}`);
+        setStatus('Estimation failed: ' + error.message);
+      } finally {
+        setIsEstimating(false);
+      }
+    };
+
+    const executeClaimTransactions = async (signedContract, tokens, gasPrice) => {
+      setIsClaiming(true);
+      setStatus('Claiming tokens...');
+
+      try {
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const token of tokens) {
+          try {
+            addLog(`\n🚀 Claiming token ${token.tokenId}...`);
+            setStatus(`Claiming token ${token.tokenId}...`);
+
+            const tx = await signedContract.bulkClaimMintReward(
+              token.tokenId,
+              claimToAddress,
+              { gasPrice }
+            );
+
+            addLog(`Transaction sent: ${tx.hash}`);
+            addLog(`Waiting for confirmation...`);
+
+            const receipt = await tx.wait();
+
+            if (receipt.status === 1) {
+              successCount++;
+              addLog(`✅ Token ${token.tokenId} claimed successfully!`);
+            } else {
+              failCount++;
+              addLog(`❌ Token ${token.tokenId} claim failed in transaction`);
+            }
+
+          } catch (error) {
+            failCount++;
+            addLog(`❌ Token ${token.tokenId} claim failed: ${error.message}`);
+          }
+
+          // Small delay between transactions
+          await delay(1000);
+        }
+
+        addLog(`\n🎉 Claiming complete!`);
+        addLog(`- Success: ${successCount}`);
+        addLog(`- Failed: ${failCount}`);
+
+        setStatus(`Claiming complete. ${successCount} successful, ${failCount} failed.`);
+
+        // Clear successful tokens from the list
+        if (successCount > 0) {
+          setClaimableXENFTs([]);
+          setTotalVMUs(0);
+          setEstimatedTotalCost(0n);
+        }
+
+      } catch (error) {
+        addLog(`❌ Claiming process failed: ${error.message}`);
+        setStatus('Claiming failed: ' + error.message);
+      } finally {
+        setIsClaiming(false);
+      }
+    };
+
+    // Wallet checks
+    if (!wallet) {
+      return <div className="tab-content">Please set up your wallet first.</div>;
+    }
+    if (walletStep !== 'complete') {
+      return <div className="tab-content">Please complete wallet setup.</div>;
+    }
+
+    return (
+      <div className="tab-content">
+        <div className="mode-header">
+          <div className="mode-icon">🔥</div>
+          <h3>Claim Matured XENFTs</h3>
+          <p>Scan and claim your matured XENFTs to receive XEN tokens</p>
+        </div>
+
+        <div className="config-section">
+          <h4>⚙️ Configuration</h4>
+          <div className="config-grid">
+            <NumberInput
+              label="Start Token ID"
+              value={startTokenId}
+              onChange={(value) => updateFormField('claimStartTokenId', value)}
+              placeholder="e.g. 826188"
+              formKey="claimStartTokenId"
+              disabled={isScanning || isClaiming}
+              hint="First token to scan"
+            />
+
+            <NumberInput
+              label="End Token ID"
+              value={endTokenId}
+              onChange={(value) => updateFormField('claimEndTokenId', value)}
+              placeholder="e.g. 826295"
+              formKey="claimEndTokenId"
+              disabled={isScanning || isClaiming}
+              hint="Last token to scan"
+            />
+
+            <TextInput
+              label="Gas Price"
+              value={customGasPriceGwei}
+              onChange={(value) => updateFormField('claimGasPrice', value)}
+              placeholder="e.g. 0.01"
+              formKey="claimGasPrice"
+              disabled={isScanning || isClaiming}
+              hint="gwei"
+            />
+
+            <TextInput
+              label="Claim To Address"
+              value={claimToAddress}
+              onChange={(value) => updateFormField('claimToAddress', value)}
+              placeholder="Address to receive XEN"
+              formKey="claimToAddress"
+              disabled={isScanning || isClaiming}
+              hint="Destination wallet"
+            />
+          </div>
+        </div>
+
+        <div className="launch-section">
+          <button
+            onClick={scanTokenRange}
+            disabled={isScanning || isClaiming}
+            className={`launch-button secondary ${(isScanning || isClaiming) ? 'disabled' : ''}`}
+          >
+            <span className="button-icon">{isScanning ? '🔄' : '🔍'}</span>
+            <span className="button-text">{isScanning ? 'Scanning...' : 'Scan Only'}</span>
+          </button>
+
+          <button
+            onClick={scanAndClaim}
+            disabled={isScanning || isClaiming}
+            className={`launch-button ${(isScanning || isClaiming) ? 'disabled' : ''}`}
+          >
+            <span className="button-icon">{isScanning ? '🔄' : '🔥'}</span>
+            <span className="button-text">{isScanning ? 'Processing...' : 'Scan & Claim All'}</span>
+          </button>
+        </div>
+
+        <div className="preview-section">
+          <h4>📊 Status</h4>
+          {(isScanning || isClaiming) && (
+            <div className="operation-status">
+              <div className="status-indicator pulsing"></div>
+              <span>{isScanning ? 'Scanning in progress...' : 'Claiming in progress...'}</span>
+            </div>
+          )}
+
+          <div className="preview-stats">
+            <div className="stat-item">
+              <span className="stat-label">Found Claimable:</span>
+              <span className="stat-value">{claimableXENFTs.length} XENFTs</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Total VMUs:</span>
+              <span className="stat-value">{totalVMUs.toLocaleString()}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Estimated Cost:</span>
+              <span className="stat-value">{formatEther(estimatedTotalCost)} ETH</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Status:</span>
+              <span className={`stat-value ${status.includes('success') || status.includes('Complete') ? 'success' :
+                  status.includes('fail') || status.includes('Error') ? 'error' : ''
+                }`}>{status}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="logs-section">
+          <h5>Transaction Log</h5>
+          <div className="logs-container">
+            {scanLogs.length > 0 ? (
+              scanLogs.slice().reverse().map((log, index) => (
+                <div
+                  key={index}
+                  className={`log-entry ${log.includes('SUCCESS') || log.includes('✅') ? 'success' :
+                      log.includes('ERROR') || log.includes('FAILED') || log.includes('❌') ? 'error' :
+                        log.includes('TX:') || log.includes('Waiting') ? 'info' :
+                          log.includes('[') || log.includes('Claiming') ? 'warning' : ''
+                    }`}
+                >
+                  <p className="log-message">{log}</p>
+                </div>
+              ))
+            ) : (
+              <div className="no-logs">Live transaction logs will appear here...</div>
+            )}
+          </div>
+        </div>
+
+        {claimableXENFTs.length > 0 && (
+          <div className="claimable-section">
+            <h4>Claimable Tokens</h4>
+            <div className="claimable-list">
+              {claimableXENFTs.map((token) => (
+                <div key={token.tokenId} className="token-item">
+                  <span className="token-id">Token {token.tokenId}</span>
+                  <span className="token-vmus">{token.vmuCount} VMUs</span>
+                  <span className="token-date">
+                    Mature: {new Date(token.maturityTs * 1000).toLocaleDateString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     );
@@ -2722,10 +3927,32 @@ const App = () => {
                     ) : (
                       <div className="header-info">
                         <span className="setup-status">
-                          {walletStep === 'initial' && '🔑 Setup Wallet'}
+                          {walletStep === 'initial' && '🔒 Setup Wallet'}
                           {walletStep === 'backup' && '💾 Backup Required'}
                           {walletStep === 'verify' && '✅ Verify Wallet'}
                         </span>
+                      </div>
+                    )}
+
+                    {/* Keep only ONE activity indicator */}
+                    {(isMinting || claimingState.isScanning || claimingState.isClaiming) && (
+                      <div className="global-activity-indicator">
+                        <div className="activity-dot pulsing"></div>
+                        <span className="activity-text">
+                          {isMinting ? 'Minting XENFTs' :
+                            claimingState.isScanning ? 'Scanning Tokens' :
+                              'Claiming XENFTs'}
+                        </span>
+                        <button
+                          className="emergency-stop"
+                          onClick={() => {
+                            if (isMinting) stopMinting();
+                            if (claimingState.isScanning) setClaimingState(prev => ({ ...prev, isScanning: false }));
+                            if (claimingState.isClaiming) setClaimingState(prev => ({ ...prev, isClaiming: false }));
+                          }}
+                        >
+                          Stop
+                        </button>
                       </div>
                     )}
                   </div>
@@ -2756,6 +3983,13 @@ const App = () => {
                       📊 Ladder
                     </button>
                     <button
+                      onClick={() => setActiveTab('claim')}
+                      className={`tab-button ${activeTab === 'claim' ? 'active' : ''}`}
+                      disabled={!wallet || walletStep !== 'complete'}
+                    >
+                      🔥 Claim
+                    </button>
+                    <button
                       onClick={() => setActiveTab('help')}
                       className={`tab-button ${activeTab === 'help' ? 'active' : ''}`}
                       disabled={!wallet || walletStep !== 'complete'}
@@ -2768,6 +4002,7 @@ const App = () => {
                     {activeTab === 'wallet' && <WalletTab />}
                     {activeTab === 'rainbow' && <RainbowTab />}
                     {activeTab === 'ladder' && <LadderTab />}
+                    {activeTab === 'claim' && <ClaimTab />}
                     {activeTab === 'help' && <HelpTab />}
                   </div>
                 </div>
