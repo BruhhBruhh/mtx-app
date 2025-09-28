@@ -3857,11 +3857,11 @@ const App = () => {
                 </div>
 
                 <button
-                  onClick={() => setShowApp(true)}
-                  className="hero-launch-button"
+                  disabled
+                  className="hero-launch-button disabled"
                 >
-                  <span className="launch-icon">🚀</span>
-                  Launch App
+                  <span className="launch-icon">🚧</span>
+                  Under Construction
                 </button>
 
                 <div className="hero-modes">
